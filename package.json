@@ -1,0 +1,54 @@
+{
+  "name": "opencode-session-search",
+  "version": "1.0.0",
+  "description": "Zero-token interactive TUI popup plugin to search past OpenCode sessions with multi-term AND, regex, fuzzy matching, and inline filters (role, date, file, tool, project scope).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./tui": "./src/tui.ts"
+  },
+  "files": [
+    "src/*.ts",
+    "assets/screenshot.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --no-warnings --experimental-strip-types --test test/search.test.ts"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "session-search",
+    "history-search",
+    "tui",
+    "sqlite",
+    "fuzzy-search"
+  ],
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=2.0.0",
+    "@opentui/core": "*",
+    "@opentui/solid": "*",
+    "solid-js": "*"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/core": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
+  },
+  "author": "nandoblanco",
+  "license": "MIT",
+  "repository": "github:nandoblanco/opencode-session-search"
+}
