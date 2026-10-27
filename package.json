@@ -1,7 +1,7 @@
 {
   "name": "opencode-session-search",
   "version": "1.0.0",
-  "description": "Zero-token interactive TUI popup plugin to search past OpenCode sessions with multi-term AND, regex, fuzzy matching, and inline filters (role, date, file, tool, project scope).",
+  "description": "Local-first, zero-token interactive TUI popup plugin to search past OpenCode sessions with multi-term AND, regex, fuzzy matching, and inline filters (role, date, file, tool, project scope).",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -11,7 +11,7 @@
   },
   "files": [
     "src/*.ts",
-    "assets/screenshot.svg",
+    "assets/screenshot.png",
     "README.md",
     "LICENSE"
   ],
@@ -25,6 +25,8 @@
   "keywords": [
     "opencode",
     "opencode-plugin",
+    "local-first",
+    "zero-token",
     "session-search",
     "history-search",
     "tui",
@@ -38,6 +40,9 @@
     "solid-js": "*"
   },
   "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
     "@opentui/core": {
       "optional": true
     },

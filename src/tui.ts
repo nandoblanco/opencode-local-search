@@ -143,6 +143,29 @@ async function loadTuiRenderer() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let previewScrollRef: any;
 
+    const resolveDialogWidth = (): string | number => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const opts = (props.context as any)?.options;
+      const raw =
+        opts?.dialogWidth ??
+        opts?.width ??
+        process.env.OPENCODE_SESSION_SEARCH_DIALOG_WIDTH ??
+        process.env.OPENCODE_DIALOG_WIDTH ??
+        "80%";
+      if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+        return raw <= 100 ? `${Math.round(raw)}%` : Math.round(raw);
+      }
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (/^\d+(\.\d+)?%$/.test(trimmed)) return trimmed;
+        const num = Number(trimmed);
+        if (Number.isFinite(num) && num > 0) {
+          return num <= 100 ? `${Math.round(num)}%` : Math.round(num);
+        }
+      }
+      return "80%";
+    };
+
     const applyDialogWidth = () => {
       try {
         props.context.ui.dialog.set({
@@ -156,15 +179,16 @@ async function loadTuiRenderer() {
       if (!rootRef) return;
       try {
         // Walk up to the dialog container box (direct child of the full-screen absolute overlay)
-        // and set its width/maxWidth to 70% of the terminal viewport.
+        // and set its width/maxWidth to the configured percentage of the terminal viewport (default 80%).
+        const targetWidth = resolveDialogWidth();
         let cursor = rootRef;
         let dialogBox = rootRef;
         while (cursor.parent && cursor.parent._positionType !== "absolute") {
           cursor = cursor.parent;
           dialogBox = cursor;
         }
-        dialogBox.width = "70%";
-        dialogBox.maxWidth = "70%";
+        dialogBox.width = targetWidth;
+        dialogBox.maxWidth = targetWidth;
         dialogBox.minWidth = 72;
 
         let inner = rootRef;
@@ -299,8 +323,9 @@ async function loadTuiRenderer() {
           (a, b) => a.timeCreated - b.timeCreated
         );
         for (const entry of sortedEntries) {
-          if (entry.messageId && !uniqueMsgIds.includes(entry.messageId)) {
-            uniqueMsgIds.push(entry.messageId);
+          const entryMsgId = entry.messageId || entry.id.split(":")[0];
+          if (entryMsgId && !uniqueMsgIds.includes(entryMsgId)) {
+            uniqueMsgIds.push(entryMsgId);
           }
         }
         const msgIdx = uniqueMsgIds.indexOf(messageHit.messageId);

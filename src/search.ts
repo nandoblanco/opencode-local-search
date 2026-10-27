@@ -11,6 +11,7 @@ export type DatePreset = "all" | "today" | "yesterday" | "7d" | "30d";
 
 export interface SearchEntry {
   id: string;
+  messageId?: string;
   role: "user" | "assistant" | "shell";
   kind: "message" | "tool" | "filepath";
   text: string;
@@ -40,6 +41,7 @@ export interface SessionIndex {
 }
 
 export interface SearchEntryMatch {
+  messageId?: string;
   role: "user" | "assistant" | "shell" | "title";
   kind: "title" | "message" | "tool" | "filepath" | "fuzzy";
   toolName?: string;
@@ -55,6 +57,7 @@ export interface SearchSessionMatch {
   matchBadge: string;
   bestSnippet: string;
   bestRole: string;
+  bestMatch?: SearchEntryMatch;
   totalMatches: number;
   matches: SearchEntryMatch[];
 }
@@ -333,6 +336,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
             if (text) {
               session.entries.push({
                 id: msgId,
+                messageId: msgId,
                 role: "user",
                 kind: "message",
                 text,
@@ -353,6 +357,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                     filesSet.add(filePath);
                     session.entries.push({
                       id: `${msgId}:file:${filePath}`,
+                      messageId: msgId,
                       role: "user",
                       kind: "filepath",
                       text: filePath,
@@ -373,6 +378,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                 if (text) {
                   session.entries.push({
                     id: msgId,
+                    messageId: msgId,
                     role: "assistant",
                     kind: "message",
                     text,
@@ -390,6 +396,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                   filesSet.add(fp);
                   session.entries.push({
                     id: `${msgId}:file:${fp}`,
+                    messageId: msgId,
                     role: "assistant",
                     kind: "filepath",
                     text: `${toolName} -> ${fp}`,
@@ -404,6 +411,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                   const toolText = `[${toolName}] ${inputSummary}`;
                   session.entries.push({
                     id: `${msgId}:tool:${toolName}`,
+                    messageId: msgId,
                     role: "assistant",
                     kind: "tool",
                     text: toolText,
@@ -423,6 +431,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
               toolsSet.add("shell");
               session.entries.push({
                 id: msgId,
+                messageId: msgId,
                 role: "shell",
                 kind: "tool",
                 text: combined,
@@ -469,9 +478,9 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
       let v1Parts: Record<string, unknown>[];
       try {
         v1Parts = db.all(`
-          SELECT id, session_id, time_created, part_data, role
+          SELECT id, message_id, session_id, time_created, part_data, role
           FROM (
-            SELECT p.id, p.session_id, p.time_created, p.data AS part_data,
+            SELECT p.id, p.message_id, p.session_id, p.time_created, p.data AS part_data,
                    json_extract(m.data, '$.role') AS role,
                    ROW_NUMBER() OVER (PARTITION BY p.session_id ORDER BY p.time_created DESC) AS rn
             FROM part p
@@ -483,7 +492,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
         `);
       } catch {
         v1Parts = db.all(`
-          SELECT p.id, p.session_id, p.time_created, p.data AS part_data,
+          SELECT p.id, p.message_id, p.session_id, p.time_created, p.data AS part_data,
                  json_extract(m.data, '$.role') AS role
           FROM part p
           JOIN message m ON m.id = p.message_id
@@ -506,11 +515,13 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
         }
         const filesSet = sessionFiles.get(sessionId)!;
         const toolsSet = sessionTools.get(sessionId)!;
+        const v1MsgId = String(row.message_id || row.id || "");
 
         if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
           const text = part.text.trim();
           session.entries.push({
             id: String(row.id || ""),
+            messageId: v1MsgId,
             role,
             kind: "message",
             text,
@@ -531,6 +542,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
             const toolText = `[${toolName}] ${summary}`;
             session.entries.push({
               id: String(row.id || ""),
+              messageId: v1MsgId,
               role,
               kind: "tool",
               text: toolText,
@@ -545,6 +557,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
               filesSet.add(fp.trim());
               session.entries.push({
                 id: `${row.id}:patch:${fp}`,
+                messageId: v1MsgId,
                 role,
                 kind: "filepath",
                 text: fp.trim(),
@@ -898,6 +911,7 @@ export function searchSessionIndex(
         if (parsed.role !== "all" && entry.role !== parsed.role) continue;
         if (previewMatches.length < 6 && entry.kind === "message") {
           previewMatches.push({
+            messageId: entry.messageId ?? entry.id.split(":")[0],
             role: entry.role,
             kind: "message",
             timeCreated: entry.timeCreated,
@@ -913,6 +927,7 @@ export function searchSessionIndex(
         matchBadge: session.tools.length ? `${session.entries.length} msgs` : "recent",
         bestSnippet: firstEntry ? firstEntry.snippet : session.directory || "No messages",
         bestRole: firstEntry ? firstEntry.role : "title",
+        bestMatch: firstEntry,
         totalMatches: previewMatches.length,
         matches: previewMatches,
       });
@@ -1040,6 +1055,7 @@ export function searchSessionIndex(
           totalMatches++;
           if (matches.length < 8) {
             matches.push({
+              messageId: entry.messageId ?? entry.id.split(":")[0],
               role: entry.role,
               kind: entry.kind,
               toolName: entry.toolName,
@@ -1106,6 +1122,7 @@ export function searchSessionIndex(
 
         if (matches.length < 8) {
           matches.push({
+            messageId: entry.messageId ?? entry.id.split(":")[0],
             role: entry.role,
             kind: isFuzzyEntryMatch ? "fuzzy" : entry.kind,
             toolName: entry.toolName,
@@ -1152,6 +1169,7 @@ export function searchSessionIndex(
                 totalMatches++;
                 if (matches.length < 8) {
                   matches.push({
+                    messageId: entry.messageId ?? entry.id.split(":")[0],
                     role: entry.role,
                     kind: "fuzzy",
                     toolName: entry.toolName,
@@ -1200,6 +1218,7 @@ export function searchSessionIndex(
       matchBadge: badge,
       bestSnippet: primary.snippet,
       bestRole: primary.role,
+      bestMatch: primary,
       totalMatches,
       matches,
     });
