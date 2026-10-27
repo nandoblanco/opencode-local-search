@@ -34,7 +34,7 @@ This project started as a small local CLI script wired to a custom `/search` com
 ### Option 1: One-Command Install (Recommended)
 
 ```sh
-npx opencode-local-search install
+npx @nandoblanco/opencode-local-search install
 # or directly from GitHub:
 npx github:nandoblanco/opencode-local-search install
 ```
@@ -42,20 +42,20 @@ npx github:nandoblanco/opencode-local-search install
 Or install with OpenCode's native plugin CLI:
 
 ```sh
-opencode plugin add opencode-local-search
+opencode plugin add @nandoblanco/opencode-local-search
 # or directly from GitHub:
 opencode plugin add github:nandoblanco/opencode-local-search
 ```
 
 ### Option 2: Manual Configuration
 
-Add `opencode-local-search` to `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
+Add `@nandoblanco/opencode-local-search` to `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
 
 ```json
 {
 	"plugins": [
 		[
-			"opencode-local-search",
+			"@nandoblanco/opencode-local-search",
 			{
 				"dialogWidth": "80%"
 			}
@@ -225,7 +225,7 @@ Options can be passed in `~/.config/opencode/cli.json` (or `opencode.jsonc`) or 
 {
 	"plugins": [
 		[
-			"opencode-local-search",
+			"@nandoblanco/opencode-local-search",
 			{
 				"dialogWidth": "80%"
 			}

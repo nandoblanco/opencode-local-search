@@ -118,7 +118,8 @@ export async function installPlugin(options) {
   const configDir = resolveConfigDir(opts.configDir);
   fs.mkdirSync(configDir, { recursive: true });
 
-  const pkgName = "opencode-local-search";
+  const pkgName = "@nandoblanco/opencode-local-search";
+  const matchKey = "opencode-local-search";
   const entryStr = opts.dialogWidth
     ? '["' + pkgName + '", { "dialogWidth": "' + String(opts.dialogWidth) + '" }]'
     : '"' + pkgName + '"';
@@ -128,7 +129,7 @@ export async function installPlugin(options) {
     cliConfigFile,
     "https://" + cliName + ".ai/v2/cli.json",
     entryStr,
-    pkgName
+    matchKey
   );
 
   return {
@@ -154,6 +155,6 @@ if (isDirectRun) {
       });
   } else {
     console.log("Usage:");
-    console.log("  npx opencode-local-search install");
+    console.log("  npx @nandoblanco/opencode-local-search install");
   }
 }

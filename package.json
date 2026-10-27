@@ -1,6 +1,9 @@
 {
-  "name": "opencode-local-search",
+  "name": "@nandoblanco/opencode-local-search",
   "version": "1.0.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Local-first, zero-token interactive TUI popup plugin to search past OpenCode sessions with multi-term AND, regex, fuzzy matching, and inline filters (role, date, file, tool, project scope).",
   "type": "module",
   "main": "./src/index.ts",
