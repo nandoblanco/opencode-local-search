@@ -1352,7 +1352,7 @@ async function openFallbackSelectDialog(
 }
 
 export default {
-  id: "opencode-session-search",
+  id: "opencode-local-search",
   async setup(context: TuiPluginContext) {
     if (!context?.ui) {
       return;

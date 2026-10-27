@@ -1,8 +1,8 @@
-# opencode-session-search
+# opencode-local-search
 
-Local-first, zero-token interactive TUI popup plugin for OpenCode to search past sessions, preview matching messages and files, and jump straight to the exact matched message in any conversation.
+**Local-first, zero-token interactive session search plugin for OpenCode**: indexes your local SQLite session history automatically, previews matching messages, tools, and files as you type, and jumps straight to the exact matched message in any conversation.
 
-![opencode-session-search TUI preview](./assets/screenshot.png)
+![opencode-local-search TUI preview](./assets/screenshot.png)
 
 ## Background
 
@@ -11,7 +11,7 @@ This project started as a small local CLI script wired to a custom `/search` com
 1. **Every search ran through an LLM turn**: Because custom markdown commands send their output to the model, searching past sessions took several seconds and used prompt and completion tokens just to look up an old conversation.
 2. **Results were static text**: Getting a list of session IDs in the chat still meant copying an ID or opening `/sessions` to actually switch to the session.
 
-`opencode-session-search` makes session search a native part of the terminal interface:
+`opencode-local-search` makes session search a native part of the terminal interface:
 
 1. **Zero-token local SQLite indexing**: Queries OpenCode's local SQLite database directly inside the TUI using the runtime's built-in driver (`bun:sqlite` or `node:sqlite`) without making an LLM request.
 2. **Live split-pane preview**: Filter across your past work on every keystroke on the left while inspecting highlighted message snippets, tools used, and files touched on the right.
@@ -33,23 +33,29 @@ This project started as a small local CLI script wired to a custom `/search` com
 
 ### Option 1: One-Command Install (Recommended)
 
-Install with OpenCode's native plugin CLI:
+```sh
+npx opencode-local-search install
+# or directly from GitHub:
+npx github:nandoblanco/opencode-local-search install
+```
+
+Or install with OpenCode's native plugin CLI:
 
 ```sh
-opencode plugin add opencode-session-search
+opencode plugin add opencode-local-search
 # or directly from GitHub:
-opencode plugin add github:nandoblanco/opencode-session-search
+opencode plugin add github:nandoblanco/opencode-local-search
 ```
 
 ### Option 2: Manual Configuration
 
-Add `opencode-session-search` to `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
+Add `opencode-local-search` to `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
 
 ```json
 {
 	"plugins": [
 		[
-			"opencode-session-search",
+			"opencode-local-search",
 			{
 				"dialogWidth": "80%"
 			}
@@ -64,7 +70,7 @@ Clone or copy this folder and reference it in `~/.config/opencode/cli.json` (no 
 
 ```json
 {
-	"plugins": ["file:///path/to/opencode-session-search"]
+	"plugins": ["file:///path/to/opencode-local-search"]
 }
 ```
 
@@ -121,7 +127,7 @@ Type filters inline in the search bar or toggle them with keyboard shortcuts and
 
 ### 1. Zero-Dependency Native SQLite Driver (`openReadOnlyDb` & `resolveDbPath`)
 
-`opencode-session-search` has zero runtime npm dependencies and requires no compiled C++ addons. When the popup opens, `openReadOnlyDb()` detects the active JavaScript runtime (`Bun` vs. Node.js) and dynamically imports the built-in SQLite driver (`bun:sqlite` or `node:sqlite`) in read-only mode.
+`opencode-local-search` has zero runtime npm dependencies and requires no compiled C++ addons. When the popup opens, `openReadOnlyDb()` detects the active JavaScript runtime (`Bun` vs. Node.js) and dynamically imports the built-in SQLite driver (`bun:sqlite` or `node:sqlite`) in read-only mode.
 
 `resolveDbPath()` locates the OpenCode database in this order:
 
@@ -202,7 +208,7 @@ When you press `Enter` on a session (or click a specific snippet card in the rig
 
 ### 8. Token Usage Breakdown
 
-Every operation in `opencode-session-search` uses zero LLM tokens:
+Every operation in `opencode-local-search` uses zero LLM tokens:
 
 | Operation | Token Cost | Why |
 | :--- | :--- | :--- |
@@ -219,7 +225,7 @@ Options can be passed in `~/.config/opencode/cli.json` (or `opencode.jsonc`) or 
 {
 	"plugins": [
 		[
-			"opencode-session-search",
+			"opencode-local-search",
 			{
 				"dialogWidth": "80%"
 			}

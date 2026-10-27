@@ -183,7 +183,7 @@ describe("searchSessionIndex", () => {
 
 describe("loadSessionIndex (SQLite V2 schema)", () => {
   it("loads and indexes a temporary OpenCode V2 SQLite database", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "opencode-session-search-test-"));
+    const tempDir = mkdtempSync(join(tmpdir(), "opencode-local-search-test-"));
     const dbPath = join(tempDir, "opencode.db");
     try {
       const db = new DatabaseSync(dbPath);
