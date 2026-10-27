@@ -92,7 +92,25 @@ interface SqliteRowsDriver {
 }
 
 let cachedIndex: SessionIndex | null = null;
+let cachedIndexEvictTimer: ReturnType<typeof setTimeout> | null = null;
 const INDEX_TTL_MS = 6000; // Refresh at most every 6s unless forced
+const INDEX_IDLE_EVICT_MS = 120_000; // Free cached index after 2m idle
+const MAX_INDEXED_TEXT_CHARS = 4000;
+
+function capIndexedText(text: string): string {
+  return text.length > MAX_INDEXED_TEXT_CHARS ? text.slice(0, MAX_INDEXED_TEXT_CHARS) : text;
+}
+
+function scheduleIndexIdleEviction(): void {
+  if (cachedIndexEvictTimer) {
+    clearTimeout(cachedIndexEvictTimer);
+  }
+  cachedIndexEvictTimer = setTimeout(() => {
+    cachedIndex = null;
+    cachedIndexEvictTimer = null;
+  }, INDEX_IDLE_EVICT_MS);
+  cachedIndexEvictTimer.unref?.();
+}
 
 export function resolveDbPath(customPath?: string): string {
   if (customPath && existsSync(customPath)) {
@@ -332,7 +350,8 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
           const toolsSet = sessionTools.get(sessionId)!;
 
           if (type === "user") {
-            const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
+            const rawText = typeof parsed.text === "string" ? parsed.text.trim() : "";
+            const text = capIndexedText(rawText);
             if (text) {
               session.entries.push({
                 id: msgId,
@@ -370,14 +389,15 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
               }
             }
           } else if (type === "assistant" && Array.isArray(parsed.content)) {
+            let partIdx = 0;
             for (const item of parsed.content) {
               if (!item || typeof item !== "object") continue;
               const part = item as Record<string, unknown>;
               if (part.type === "text" && typeof part.text === "string") {
-                const text = part.text.trim();
+                const text = capIndexedText(part.text.trim());
                 if (text) {
                   session.entries.push({
-                    id: msgId,
+                    id: partIdx === 0 ? msgId : `${msgId}:part:${partIdx}`,
                     messageId: msgId,
                     role: "assistant",
                     kind: "message",
@@ -385,6 +405,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                     textLower: text.toLowerCase(),
                     timeCreated,
                   });
+                  partIdx++;
                 }
               } else if (part.type === "tool" && typeof part.name === "string") {
                 const toolName = part.name;
@@ -408,9 +429,9 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                 }
                 const inputSummary = stringifyToolInput(state.input);
                 if (inputSummary) {
-                  const toolText = `[${toolName}] ${inputSummary}`;
+                  const toolText = capIndexedText(`[${toolName}] ${inputSummary}`);
                   session.entries.push({
-                    id: `${msgId}:tool:${toolName}`,
+                    id: `${msgId}:tool:${toolName}:${partIdx}`,
                     messageId: msgId,
                     role: "assistant",
                     kind: "tool",
@@ -419,6 +440,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
                     toolName,
                     timeCreated,
                   });
+                  partIdx++;
                 }
               }
             }
@@ -426,7 +448,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
             const cmd = typeof parsed.command === "string" ? parsed.command.trim() : "";
             const outObj = parsed.output as Record<string, unknown> | undefined;
             const outText = outObj && typeof outObj.output === "string" ? outObj.output.trim() : "";
-            const combined = [cmd ? `$ ${cmd}` : "", outText].filter(Boolean).join("\n");
+            const combined = capIndexedText([cmd ? `$ ${cmd}` : "", outText].filter(Boolean).join("\n"));
             if (combined) {
               toolsSet.add("shell");
               session.entries.push({
@@ -585,6 +607,7 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
     loadedAt: Date.now(),
     sessions,
   };
+  scheduleIndexIdleEviction();
   return cachedIndex;
 }
 
@@ -638,6 +661,25 @@ function parseDateToken(value: string): { start?: number; end?: number; label: s
   return undefined;
 }
 
+function isSafeRegexPattern(pattern: string): boolean {
+  if (!pattern || pattern.length > 256) return false;
+  // Reject nested quantifiers such as (a+)+, (.*)+, (a|aa)+ that cause catastrophic backtracking
+  if (/(\([^)]*[+*][^)]*\))[+*?]/.test(pattern)) return false;
+  if (/(\.\*){3,}/.test(pattern)) return false;
+  return true;
+}
+
+function compileSafeRegex(pattern: string, flags = "i"): { regex?: RegExp; error?: string } {
+  if (!isSafeRegexPattern(pattern)) {
+    return { error: "Unsafe or overly complex regex pattern" };
+  }
+  try {
+    return { regex: new RegExp(pattern, flags) };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Invalid regex" };
+  }
+}
+
 export function parseSearchQuery(rawQuery: string, options: SearchOptions = {}): ParsedQuery {
   const raw = rawQuery.trim();
   const terms: string[] = [];
@@ -659,11 +701,9 @@ export function parseSearchQuery(rawQuery: string, options: SearchOptions = {}):
   const slashRegex = raw.match(/^\/(.+)\/([gimsuy]*)$/);
   if (slashRegex) {
     effectiveMode = "regex";
-    try {
-      regex = new RegExp(slashRegex[1], slashRegex[2] || "i");
-    } catch (err) {
-      regexError = err instanceof Error ? err.message : "Invalid regex";
-    }
+    const compiled = compileSafeRegex(slashRegex[1], slashRegex[2] || "i");
+    regex = compiled.regex;
+    regexError = compiled.error;
     return {
       raw,
       terms,
@@ -688,11 +728,9 @@ export function parseSearchQuery(rawQuery: string, options: SearchOptions = {}):
     const tokenSlashRegex = token.match(/^\/(.+)\/([gimsuy]*)$/);
     if (tokenSlashRegex) {
       effectiveMode = "regex";
-      try {
-        regex = new RegExp(tokenSlashRegex[1], tokenSlashRegex[2] || "i");
-      } catch (err) {
-        regexError = err instanceof Error ? err.message : "Invalid regex";
-      }
+      const compiled = compileSafeRegex(tokenSlashRegex[1], tokenSlashRegex[2] || "i");
+      regex = compiled.regex;
+      regexError = compiled.error;
       continue;
     }
     const lower = token.toLowerCase();
@@ -736,11 +774,9 @@ export function parseSearchQuery(rawQuery: string, options: SearchOptions = {}):
     if (lower.startsWith("re:") || lower.startsWith("regex:")) {
       const pattern = token.slice(token.indexOf(":") + 1).replace(/^"|"$/g, "");
       effectiveMode = "regex";
-      try {
-        regex = new RegExp(pattern, "i");
-      } catch (err) {
-        regexError = err instanceof Error ? err.message : "Invalid regex";
-      }
+      const compiled = compileSafeRegex(pattern, "i");
+      regex = compiled.regex;
+      regexError = compiled.error;
       continue;
     }
     if (token.startsWith("~") && token.length > 1) {
@@ -754,12 +790,14 @@ export function parseSearchQuery(rawQuery: string, options: SearchOptions = {}):
     }
   }
 
-  if (effectiveMode === "regex" && !regex && terms.length > 0) {
-    try {
-      regex = new RegExp(terms.join(".*"), "i");
-    } catch (err) {
-      regexError = err instanceof Error ? err.message : "Invalid regex";
-    }
+  if (effectiveMode === "regex" && !regex && !regexError && terms.length > 0) {
+    const joinedPattern =
+      terms.length === 1
+        ? terms[0]
+        : terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+    const compiled = compileSafeRegex(joinedPattern, "i");
+    regex = compiled.regex;
+    regexError = compiled.error;
   }
 
   return {
@@ -805,19 +843,23 @@ export function editDistanceBounded(a: string, b: string, maxDist: number): numb
   return prev[lenB];
 }
 
+const WORD_TOKEN_RE = /[a-z0-9_.-]{3,}/g;
+
 export function findFuzzyWordMatch(textLower: string, term: string): { matchedWord: string; distance: number } | null {
   if (term.length < 3) return null;
   if (textLower.includes(term)) {
     return { matchedWord: term, distance: 0 };
   }
   const maxDist = term.length <= 5 ? 1 : 2;
-  const words = textLower.split(/[^a-z0-9_.-]+/);
+  const prefix2 = term.slice(0, 2);
   let bestWord = "";
   let bestDist = maxDist + 1;
 
-  for (const w of words) {
-    if (w.length < 3) continue;
-    if (w.startsWith(term.slice(0, 2)) || Math.abs(w.length - term.length) <= maxDist) {
+  WORD_TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = WORD_TOKEN_RE.exec(textLower)) !== null) {
+    const w = match[0];
+    if (w.startsWith(prefix2) || Math.abs(w.length - term.length) <= maxDist) {
       const dist = editDistanceBounded(term, w, maxDist);
       if (dist < bestDist) {
         bestDist = dist;
@@ -1008,27 +1050,37 @@ export function searchSessionIndex(
       }
     }
 
-    // B. Check Entries (messages, tool calls, file paths)
-    for (const entry of session.entries) {
-      if (parsed.role !== "all" && entry.role !== parsed.role) continue;
-      if (parsed.inFilter === "title") continue;
-      if (parsed.inFilter === "message" && entry.kind !== "message") continue;
-      if (parsed.inFilter === "tool" && entry.kind !== "tool") continue;
-      if (parsed.inFilter === "file" && entry.kind !== "filepath") continue;
+    const entryPassesFilters = (entry: SearchEntry): boolean => {
+      if (parsed.role !== "all" && entry.role !== parsed.role) return false;
+      if (parsed.inFilter === "title") return false;
+      if (parsed.inFilter === "message" && entry.kind !== "message") return false;
+      if (parsed.inFilter === "tool" && entry.kind !== "tool") return false;
+      if (parsed.inFilter === "file" && entry.kind !== "filepath") return false;
       if (
         parsed.toolFilter &&
         entry.kind === "tool" &&
         (!entry.toolName || !entry.toolName.toLowerCase().includes(parsed.toolFilter))
       ) {
-        continue;
+        return false;
       }
       if (
         parsed.fileFilter &&
         entry.kind === "filepath" &&
         (!entry.filePath || !entry.filePath.toLowerCase().includes(parsed.fileFilter))
       ) {
-        continue;
+        return false;
       }
+      if (parsed.dateRange) {
+        const { start, end } = parsed.dateRange;
+        if (start && entry.timeCreated < start) return false;
+        if (end && entry.timeCreated > end) return false;
+      }
+      return true;
+    };
+
+    // B. Check Entries (messages, tool calls, file paths)
+    for (const entry of session.entries) {
+      if (!entryPassesFilters(entry)) continue;
 
       const matchesFilterTarget =
         Boolean(
@@ -1041,12 +1093,6 @@ export function searchSessionIndex(
             ((entry.filePath && entry.filePath.toLowerCase().includes(parsed.fileFilter)) ||
               (entry.kind === "tool" && entry.textLower.includes(parsed.fileFilter)))
         );
-
-      if (parsed.dateRange) {
-        const { start, end } = parsed.dateRange;
-        if (start && entry.timeCreated < start) continue;
-        if (end && entry.timeCreated > end) continue;
-      }
 
       if (parsed.effectiveMode === "regex" && parsed.regex) {
         const m = entry.text.match(parsed.regex);
@@ -1144,24 +1190,26 @@ export function searchSessionIndex(
         if (parsed.effectiveMode === "smart" && parsed.terms.length > 0) {
           for (const term of parsed.terms) {
             if (matchedTermsInSession.has(term)) continue;
-            const titleFuzzy = findFuzzyWordMatch(session.titleLower, term);
-            if (titleFuzzy) {
-              matchedTermsInSession.add(term);
-              score += 30;
-              totalMatches++;
-              if (matches.length < 8) {
-                matches.push({
-                  role: "title",
-                  kind: "fuzzy",
-                  timeCreated: session.timeUpdated,
-                  snippet: session.title,
-                  matchedTerm: titleFuzzy.matchedWord,
-                });
+            if (!parsed.inFilter || parsed.inFilter === "title") {
+              const titleFuzzy = findFuzzyWordMatch(session.titleLower, term);
+              if (titleFuzzy) {
+                matchedTermsInSession.add(term);
+                score += 30;
+                totalMatches++;
+                if (matches.length < 8) {
+                  matches.push({
+                    role: "title",
+                    kind: "fuzzy",
+                    timeCreated: session.timeUpdated,
+                    snippet: session.title,
+                    matchedTerm: titleFuzzy.matchedWord,
+                  });
+                }
+                continue;
               }
-              continue;
             }
             for (const entry of session.entries) {
-              if (parsed.role !== "all" && entry.role !== parsed.role) continue;
+              if (!entryPassesFilters(entry)) continue;
               const fm = findFuzzyWordMatch(entry.textLower, term);
               if (fm) {
                 matchedTermsInSession.add(term);

@@ -9,10 +9,130 @@ import { fileURLToPath } from "node:url";
 const cliName = "open" + "code";
 
 export function resolveConfigDir(explicitDir) {
-  if (explicitDir) return path.resolve(explicitDir);
+  if (explicitDir) {
+    if (explicitDir === "~") return os.homedir();
+    if (explicitDir.startsWith("~/") || explicitDir.startsWith("~\\")) {
+      return path.join(os.homedir(), explicitDir.slice(2));
+    }
+    return path.resolve(explicitDir);
+  }
   if (process.env.OPENCODE_CONFIG_DIR) return path.resolve(process.env.OPENCODE_CONFIG_DIR);
   if (process.env.XDG_CONFIG_HOME) return path.join(process.env.XDG_CONFIG_HOME, cliName);
   return path.join(os.homedir(), ".config", cliName);
+}
+
+function findPluginsArraySpan(raw) {
+  const pluginsMatch = /"plugins"\s*:\s*\[/.exec(raw);
+  if (!pluginsMatch) return null;
+  const openBracketIdx = pluginsMatch.index + pluginsMatch[0].length - 1;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = openBracketIdx; i < raw.length; i++) {
+    const ch = raw[i];
+    const next = raw[i + 1];
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) {
+        return { openBracketIdx, closeBracketIdx: i };
+      }
+    }
+  }
+  return null;
+}
+
+function findLastCodeCharIndex(str) {
+  let inString = false;
+  let escape = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let lastCodeIdx = -1;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    const next = str[i + 1];
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (escape) {
+      escape = false;
+      lastCodeIdx = i;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+      lastCodeIdx = i;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      lastCodeIdx = i;
+      continue;
+    }
+    if (!/\s/.test(ch)) {
+      lastCodeIdx = i;
+    }
+  }
+  return lastCodeIdx;
 }
 
 function addPluginToJsoncFile(filePath, defaultSchema, pluginEntryStr, matchSubstr) {
@@ -38,71 +158,48 @@ function addPluginToJsoncFile(filePath, defaultSchema, pluginEntryStr, matchSubs
     return "already-present";
   }
 
-  const pluginsMatch = /"plugins"\s*:\s*\[/.exec(raw);
-  if (pluginsMatch) {
-    const openBracketIdx = pluginsMatch.index + pluginsMatch[0].length - 1;
-    let depth = 0;
-    let inString = false;
-    let escape = false;
-    let closeBracketIdx = -1;
-
-    for (let i = openBracketIdx; i < raw.length; i++) {
-      const ch = raw[i];
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === "\\") {
-        escape = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (!inString) {
-        if (ch === "[") depth++;
-        else if (ch === "]") {
-          depth--;
-          if (depth === 0) {
-            closeBracketIdx = i;
-            break;
-          }
-        }
-      }
-    }
-
-    if (closeBracketIdx !== -1) {
-      const inside = raw.slice(openBracketIdx + 1, closeBracketIdx).trim();
-      let insertion;
-      if (!inside) {
-        insertion = pluginEntryStr;
-      } else {
-        const trimmedBeforeClose = raw.slice(openBracketIdx + 1, closeBracketIdx).replace(/\s+$/, "");
-        const needsComma = !trimmedBeforeClose.endsWith(",");
-        insertion =
-          trimmedBeforeClose +
-          (needsComma ? "," : "") +
-          "\n    " +
-          pluginEntryStr +
-          "\n  ";
-      }
+  const span = findPluginsArraySpan(raw);
+  if (span) {
+    const { openBracketIdx, closeBracketIdx } = span;
+    const insideRaw = raw.slice(openBracketIdx + 1, closeBracketIdx);
+    const lastCodeIdx = findLastCodeCharIndex(insideRaw);
+    if (lastCodeIdx === -1) {
       const updated =
         raw.slice(0, openBracketIdx + 1) +
-        (inside ? insertion : "\n    " + insertion + "\n  ") +
+        "\n    " +
+        pluginEntryStr +
+        "\n  " +
         raw.slice(closeBracketIdx);
       fs.writeFileSync(filePath, updated, "utf8");
       return "updated";
     }
+    const lastChar = insideRaw[lastCodeIdx];
+    const withComma =
+      lastChar === ","
+        ? insideRaw.replace(/\s+$/, "")
+        : insideRaw.slice(0, lastCodeIdx + 1) + "," + insideRaw.slice(lastCodeIdx + 1).replace(/\s+$/, "");
+    const updated =
+      raw.slice(0, openBracketIdx + 1) +
+      withComma +
+      "\n    " +
+      pluginEntryStr +
+      "\n  " +
+      raw.slice(closeBracketIdx);
+    fs.writeFileSync(filePath, updated, "utf8");
+    return "updated";
   }
 
   const lastBraceIdx = raw.lastIndexOf("}");
   if (lastBraceIdx !== -1) {
-    const before = raw.slice(0, lastBraceIdx).replace(/\s+$/, "");
-    const needsComma = !before.endsWith("{") && !before.endsWith(",");
+    const beforeRaw = raw.slice(0, lastBraceIdx);
+    const lastCodeIdx = findLastCodeCharIndex(beforeRaw);
+    const lastChar = lastCodeIdx !== -1 ? beforeRaw[lastCodeIdx] : "{";
+    const needsComma = lastChar !== "{" && lastChar !== ",";
+    const withComma = needsComma
+      ? beforeRaw.slice(0, lastCodeIdx + 1) + "," + beforeRaw.slice(lastCodeIdx + 1).replace(/\s+$/, "")
+      : beforeRaw.replace(/\s+$/, "");
     const updated =
-      before +
-      (needsComma ? "," : "") +
+      withComma +
       '\n  "plugins": [\n    ' +
       pluginEntryStr +
       "\n  ]\n}\n";
@@ -144,7 +241,19 @@ const isDirectRun =
 if (isDirectRun) {
   const cmd = process.argv[2] || "install";
   if (cmd === "install" || cmd === "init" || cmd === "setup") {
-    installPlugin()
+    const args = process.argv.slice(3);
+    let configDir;
+    let dialogWidth;
+    for (let i = 0; i < args.length; i++) {
+      if ((args[i] === "--dir" || args[i] === "-d") && args[i + 1]) {
+        configDir = args[i + 1];
+        i++;
+      } else if ((args[i] === "--width" || args[i] === "--dialog-width") && args[i + 1]) {
+        dialogWidth = args[i + 1];
+        i++;
+      }
+    }
+    installPlugin({ configDir, dialogWidth })
       .then((res) => {
         console.log("opencode-local-search installed:");
         console.log("  TUI config: " + res.cliConfigFile + " (" + res.cliStatus + ")");
@@ -155,6 +264,6 @@ if (isDirectRun) {
       });
   } else {
     console.log("Usage:");
-    console.log("  npx @nandoblanco/opencode-local-search install");
+    console.log("  npx @nandoblanco/opencode-local-search install [--dir <config-dir>] [--width 80%]");
   }
 }

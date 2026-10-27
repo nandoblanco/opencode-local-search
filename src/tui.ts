@@ -38,25 +38,35 @@ function splitHighlightedText(
   text: string,
   term: string
 ): Array<{ text: string; match: boolean }> {
-  if (!term || !term.trim()) {
+  if (!term || !term.trim() || !text) {
     return [{ text, match: false }];
   }
   const cleanTerm = term.trim().toLowerCase();
+  const words = cleanTerm.split(/\s+/).filter(Boolean);
+  const candidates = words.length > 1 ? [cleanTerm, ...words] : [cleanTerm];
   const parts: Array<{ text: string; match: boolean }> = [];
   const lower = text.toLowerCase();
   let cursor = 0;
 
   while (cursor < text.length) {
-    const idx = lower.indexOf(cleanTerm, cursor);
-    if (idx === -1) {
+    let bestIdx = -1;
+    let bestLen = 0;
+    for (const w of candidates) {
+      const idx = lower.indexOf(w, cursor);
+      if (idx !== -1 && (bestIdx === -1 || idx < bestIdx || (idx === bestIdx && w.length > bestLen))) {
+        bestIdx = idx;
+        bestLen = w.length;
+      }
+    }
+    if (bestIdx === -1) {
       parts.push({ text: text.slice(cursor), match: false });
       break;
     }
-    if (idx > cursor) {
-      parts.push({ text: text.slice(cursor, idx), match: false });
+    if (bestIdx > cursor) {
+      parts.push({ text: text.slice(cursor, bestIdx), match: false });
     }
-    parts.push({ text: text.slice(idx, idx + cleanTerm.length), match: true });
-    cursor = idx + cleanTerm.length;
+    parts.push({ text: text.slice(bestIdx, bestIdx + bestLen), match: true });
+    cursor = bestIdx + bestLen;
   }
   return parts.length ? parts : [{ text, match: false }];
 }
@@ -82,7 +92,7 @@ const ROLE_CYCLE: RoleFilter[] = ["all", "user", "assistant", "shell"];
 const DATE_CYCLE: DatePreset[] = ["all", "today", "yesterday", "7d", "30d"];
 const MODE_CYCLE: SearchMode[] = ["smart", "fuzzy", "regex"];
 
-async function loadTuiRenderer() {
+function createTuiRenderer() {
 
   function el(
     tag: string,
@@ -1092,11 +1102,26 @@ function normalizeSearchNeedle(raw: string): string {
     .toLowerCase();
 }
 
+let activeScrollInterval: ReturnType<typeof setInterval> | null = null;
+let activeScrollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function clearActiveScrollTimers() {
+  if (activeScrollInterval) {
+    clearInterval(activeScrollInterval);
+    activeScrollInterval = null;
+  }
+  if (activeScrollTimeout) {
+    clearTimeout(activeScrollTimeout);
+    activeScrollTimeout = null;
+  }
+}
+
 function scrollToMatchedMessage(
   context: TuiPluginContext,
   sessionId: string,
   target?: SearchNavigationTarget
 ) {
+  clearActiveScrollTimers();
   if (!target) return;
   if (target.kind === "title" && !target.messageId) return;
 
@@ -1274,7 +1299,9 @@ function scrollToMatchedMessage(
 
     if (targetNode) {
       applyScrollToNode(targetNode);
-      setTimeout(() => {
+      if (activeScrollTimeout) clearTimeout(activeScrollTimeout);
+      activeScrollTimeout = setTimeout(() => {
+        activeScrollTimeout = null;
         try {
           applyScrollToNode(targetNode);
         } catch {
@@ -1300,10 +1327,13 @@ function scrollToMatchedMessage(
     return false;
   };
 
-  const timer = setInterval(() => {
+  activeScrollInterval = setInterval(() => {
     attempts++;
     if (tryScroll() || attempts >= maxAttempts) {
-      clearInterval(timer);
+      if (activeScrollInterval) {
+        clearInterval(activeScrollInterval);
+        activeScrollInterval = null;
+      }
     }
   }, 60);
 }
@@ -1358,7 +1388,12 @@ export default {
       return;
     }
     const currentDirectory = context.location?.directory ?? process.cwd();
-    const renderDialogPromise = loadTuiRenderer().catch(() => null);
+    let renderDialog: ReturnType<typeof createTuiRenderer> | null = null;
+    try {
+      renderDialog = createTuiRenderer();
+    } catch {
+      renderDialog = null;
+    }
 
     const openSearchPopup = async (rawArgs?: unknown) => {
       const initialQuery =
@@ -1367,7 +1402,6 @@ export default {
           : typeof (rawArgs as { arguments?: unknown } | undefined)?.arguments === "string"
             ? ((rawArgs as { arguments: string }).arguments).trim()
             : "";
-      const renderDialog = await renderDialogPromise;
       if (!renderDialog) {
         await openFallbackSelectDialog(context, initialQuery, currentDirectory);
         return;
@@ -1402,29 +1436,33 @@ export default {
       }
     };
 
+    let layerRegistered = false;
     context.ui.slot({
       append: "app",
       render() {
-        context.keymap.layer(() => ({
-          mode: "global",
-          commands: [
-            {
-              id: "session.history.search",
-              title: "Search session history...",
-              description:
-                "Interactive zero-token popup to search past sessions (multi-term, regex, fuzzy, role/date/file/tool filters)",
-              category: "Session",
-              palette: true,
-              slash: {
-                name: "search",
-                arguments: true,
+        if (!layerRegistered) {
+          layerRegistered = true;
+          context.keymap.layer(() => ({
+            mode: "global",
+            commands: [
+              {
+                id: "session.history.search",
+                title: "Search session history...",
+                description:
+                  "Interactive zero-token popup to search past sessions (multi-term, regex, fuzzy, role/date/file/tool filters)",
+                category: "Session",
+                palette: true,
+                slash: {
+                  name: "search",
+                  arguments: true,
+                },
+                run: (input) => {
+                  void openSearchPopup(input);
+                },
               },
-              run: (input) => {
-                void openSearchPopup(input);
-              },
-            },
-          ],
-        }));
+            ],
+          }));
+        }
         return null;
       },
     });
