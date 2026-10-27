@@ -228,6 +228,8 @@ describe("loadSessionIndex (SQLite V2 schema)", () => {
       const matches = searchSessionIndex(index, "zero token");
       assert.equal(matches.length, 1);
       assert.equal(matches[0].session.id, "ses_test");
+      assert.equal(matches[0].bestMatch?.messageId, "msg_1");
+      assert.equal(matches[0].matches[0]?.messageId, "msg_1");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
