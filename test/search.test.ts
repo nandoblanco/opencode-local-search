@@ -179,6 +179,17 @@ describe("searchSessionIndex", () => {
     );
     assert.ok(snippet.includes("playwright"));
   });
+
+  it("guards against catastrophic backtracking regexes and enforces entry filters in smart fuzzy fallback", () => {
+    const evilQuery = parseSearchQuery("/(a+)+b/");
+    assert.equal(evilQuery.effectiveMode, "regex");
+    assert.equal(evilQuery.regex, undefined);
+    assert.ok(evilQuery.regexError);
+
+    // Smart-mode fuzzy fallback must not match an entry filtered out by in:file
+    const filteredHits = searchSessionIndex(mockIndex, "in:file playwright databse");
+    assert.equal(filteredHits.length, 0);
+  });
 });
 
 describe("loadSessionIndex (SQLite V2 schema)", () => {
