@@ -542,117 +542,149 @@ function createTuiRenderer() {
           queueMicrotask(applyDialogWidth);
         },
         width: "100%",
-        height: 28,
+        height: 34,
         flexDirection: "column",
         backgroundColor: () => theme().background.base,
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+        gap: 1,
       },
-      // 1. Header Bar
+      // 1. Header Bar (single-line, no wrapping)
       el(
         "box",
         {
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "center",
-          paddingX: 2,
-          paddingTop: 1,
+          border: ["bottom"],
+          borderColor: () => theme().border.base,
+          paddingBottom: 0,
           flexShrink: 0,
+          width: "100%",
         },
         el(
           "box",
-          { flexDirection: "row", gap: 2, alignItems: "center" },
+          { flexDirection: "row", gap: 2, alignItems: "center", flexShrink: 0 },
           el(
             "text",
             {
-              fg: () => theme().text.base,
+              wrapMode: "none",
+              flexShrink: 0,
+              fg: () => theme().text.action.primary.base,
               attributes: TextAttributes.BOLD,
             },
-            "Session Search"
+            "opencode / search"
           ),
           el(
             "text",
-            { fg: () => theme().text.muted },
-            () =>
-              loading()
-                ? "indexing SQLite..."
-                : `${results().length} of ${indexData().sessions.length} sessions`
+            {
+              wrapMode: "none",
+              flexShrink: 0,
+              fg: () => theme().text.muted,
+            },
+            () => props.context.ui.format.path(props.currentDirectory)
           )
         ),
         el(
-          "box",
+          "text",
           {
-            flexDirection: "row",
-            gap: 2,
-            alignItems: "center",
+            wrapMode: "none",
+            flexShrink: 0,
+            fg: () => theme().text.muted,
           },
-          el(
-            "text",
-            { fg: () => theme().text.muted },
-            () => props.context.ui.format.path(props.currentDirectory)
-          ),
-          el(
-            "box",
-            {
-              paddingX: 1,
-              onMouseUp: () => props.close(),
-            },
-            el("text", { fg: () => theme().text.muted }, "esc")
-          )
+          "[↑↓] select  [Enter] open  [Tab] pane  [Esc] close"
         )
       ),
 
-      // 2. Search Input + Filter Pills Row
+      // 2. Boxed Filter + Pills Card
       el(
         "box",
         {
           flexDirection: "column",
-          paddingX: 2,
-          paddingY: 1,
-          gap: 1,
+          backgroundColor: () =>
+            theme().background.raised?.base ?? theme().background.base,
+          border: true,
+          borderColor: () =>
+            focusPane() === "search"
+              ? theme().text.action.primary.base
+              : theme().border.base,
+          paddingLeft: 2,
+          paddingRight: 2,
+          paddingTop: 0,
+          paddingBottom: 0,
+          gap: 0,
           flexShrink: 0,
-          border: ["bottom"],
-          borderColor: () => theme().border.base,
+          width: "100%",
         },
         el(
           "box",
           {
             flexDirection: "row",
+            justifyContent: "space-between",
             alignItems: "center",
             gap: 1,
+            width: "100%",
           },
           el(
             "text",
             {
-              fg: () =>
-                focusPane() === "search"
-                  ? theme().text.action.primary.base
-                  : theme().text.muted,
+              width: 7,
+              wrapMode: "none",
+              flexShrink: 0,
+              fg: () => theme().text.action.primary.base,
               attributes: TextAttributes.BOLD,
             },
-            "›"
+            "Filter:"
           ),
-          el("input", {
-            id: "session-search-input",
-            ref: (r: unknown) => {
-              inputRef = r;
-              if (props.initialQuery && r && (r as { value?: string }).value !== props.initialQuery) {
-                (r as { value: string }).value = props.initialQuery;
-              }
+          el(
+            "box",
+            {
+              flexGrow: 1,
+              flexShrink: 1,
+              minWidth: 0,
             },
-            flexGrow: 1,
-            value: () => query(),
-            focused: () => focusPane() === "search",
-            maxLength: 2000,
-            placeholder:
-              "Search keywords, \"exact phrase\", /regex/i, ~fuzzy, role:user, date:7d, file:path, tool:name...",
-            placeholderColor: () => theme().text.muted,
-            textColor: () => theme().text.base,
-            focusedTextColor: () => theme().text.formfield.focused,
-            cursorColor: () => theme().text.formfield.focused,
-            backgroundColor: () => theme().background.base,
-            focusedBackgroundColor: () => theme().background.formfield.focused,
-            onMouseDown: () => setFocusPane("search"),
-            onInput: (val: string) => setQuery(val),
-          })
+            el("input", {
+              id: "session-search-input",
+              width: "100%",
+              ref: (r: unknown) => {
+                inputRef = r;
+                if (props.initialQuery && r && (r as { value?: string }).value !== props.initialQuery) {
+                  (r as { value: string }).value = props.initialQuery;
+                }
+              },
+              value: () => query(),
+              focused: () => focusPane() === "search",
+              maxLength: 2000,
+              placeholder:
+                "Search keywords, \"exact phrase\", /regex/i, ~fuzzy, role:user, date:7d, file:path, tool:name...",
+              placeholderColor: () => theme().text.muted,
+              textColor: () => theme().text.base,
+              focusedTextColor: () => theme().text.formfield.focused,
+              cursorColor: () => theme().text.formfield.focused,
+              backgroundColor: () =>
+                theme().background.raised?.base ?? theme().background.base,
+              focusedBackgroundColor: () =>
+                theme().background.raised?.base ?? theme().background.base,
+              onMouseDown: () => setFocusPane("search"),
+              onInput: (val: string) => setQuery(val),
+            })
+          ),
+          el(
+            "text",
+            {
+              wrapMode: "none",
+              flexShrink: 0,
+              fg: () =>
+                theme().text.feedback?.success?.base ??
+                theme().text.action.primary.base,
+            },
+            () =>
+              loading()
+                ? "indexing SQLite..."
+                : `${results().length} of ${indexData().sessions.length} sessions · 0 tokens`
+          )
         ),
         // Filter pills bar
         el(
@@ -728,339 +760,407 @@ function createTuiRenderer() {
         )
       ),
 
-      // 3. Split-Pane Main Body (Left: Session List, Right: Match Preview)
+      // 3. Split-Pane Main Body: Two Side-by-Side Bordered Cards
       el(
         "box",
         {
           flexDirection: "row",
+          gap: 2,
           flexGrow: 1,
           minHeight: 0,
+          width: "100%",
         },
-        // Left Pane: Results List (44% width)
+        // Left Card: Results List (44% width)
         el(
-          "scrollbox",
+          "box",
           {
-            id: "session-search-list",
-            ref: (r: unknown) => {
-              listScrollRef = r;
-            },
             width: "44%",
             height: "100%",
+            flexDirection: "column",
             flexShrink: 0,
-            border: ["right"],
+            backgroundColor: () =>
+              theme().background.raised?.base ?? theme().background.base,
+            border: true,
             borderColor: () =>
-              focusPane() === "list" ? theme().text.base : theme().border.base,
-            scrollbarOptions: { visible: false },
+              focusPane() === "list"
+                ? theme().text.action.primary.base
+                : theme().border.base,
+            paddingLeft: 1,
+            paddingRight: 1,
+            paddingTop: 0,
+            paddingBottom: 0,
             onMouseDown: () => setFocusPane("list"),
           },
-          createComponent(Show, {
-            get when() {
-              return !loading() && results().length > 0;
+          el(
+            "box",
+            {
+              flexDirection: "row",
+              justifyContent: "space-between",
+              border: ["bottom"],
+              borderColor: () => theme().border.base,
+              paddingX: 1,
+              flexShrink: 0,
             },
-            get fallback() {
-              return el(
-                "box",
-                { paddingX: 2, paddingY: 1 },
-                el(
-                  "text",
-                  { fg: () => theme().text.muted },
-                  () =>
-                    loading()
-                      ? "Loading sessions..."
-                      : errorMsg()
-                        ? `Error: ${errorMsg()}`
-                        : "No matching sessions found. Try ~fuzzy, scope:all, or fewer terms."
-                )
-              );
+            el(
+              "text",
+              {
+                fg: () => theme().text.action.primary.base,
+                attributes: TextAttributes.BOLD,
+              },
+              "◈ MATCHING SESSIONS"
+            ),
+            el(
+              "text",
+              { fg: () => theme().text.muted },
+              () =>
+                `${(parsedQuery().scope ?? scope()) === "project" ? "project" : "all"} · ${parsedQuery().effectiveMode}`
+            )
+          ),
+          el(
+            "scrollbox",
+            {
+              id: "session-search-list",
+              ref: (r: unknown) => {
+                listScrollRef = r;
+              },
+              width: "100%",
+              flexGrow: 1,
+              minHeight: 0,
+              scrollbarOptions: { visible: false },
             },
-            get children() {
-              return createComponent(For, {
-                get each() {
-                  return results();
-                },
-                children: (item: SearchSessionMatch, idx: () => number) => {
-                  const isSelected = () => selectedIndex() === idx();
-                  return el(
-                    "box",
-                    {
-                      id: () => `session-row-${idx()}`,
-                      flexDirection: "column",
-                      paddingX: 1,
-                      paddingY: 0,
-                      marginBottom: 1,
-                      flexShrink: 0,
-                      backgroundColor: () =>
-                        isSelected()
-                          ? theme().background.action.primary.focused
-                          : undefined,
-                      onMouseUp: () => {
-                        setSelectedIndex(idx());
-                        openSelected();
-                      },
-                      onMouseOver: () => {
-                        setSelectedIndex(idx());
-                      },
-                    },
-                    el(
+            createComponent(Show, {
+              get when() {
+                return !loading() && results().length > 0;
+              },
+              get fallback() {
+                return el(
+                  "box",
+                  { paddingX: 1, paddingY: 1 },
+                  el(
+                    "text",
+                    { fg: () => theme().text.muted },
+                    () =>
+                      loading()
+                        ? "Loading sessions..."
+                        : errorMsg()
+                          ? `Error: ${errorMsg()}`
+                          : "No matching sessions found. Try ~fuzzy, scope:all, or fewer terms."
+                  )
+                );
+              },
+              get children() {
+                return createComponent(For, {
+                  get each() {
+                    return results();
+                  },
+                  children: (item: SearchSessionMatch, idx: () => number) => {
+                    const isSelected = () => selectedIndex() === idx();
+                    return el(
                       "box",
                       {
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        width: "100%",
+                        id: () => `session-row-${idx()}`,
+                        flexDirection: "column",
+                        paddingX: 1,
+                        paddingY: 0,
+                        marginBottom: 1,
+                        flexShrink: 0,
+                        backgroundColor: () =>
+                          isSelected()
+                            ? theme().background.action.primary.focused
+                            : undefined,
+                        onMouseUp: () => {
+                          setSelectedIndex(idx());
+                          openSelected();
+                        },
+                        onMouseOver: () => {
+                          setSelectedIndex(idx());
+                        },
                       },
+                      el(
+                        "box",
+                        {
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          width: "100%",
+                        },
+                        el(
+                          "text",
+                          {
+                            wrapMode: "none",
+                            truncate: true,
+                            flexShrink: 1,
+                            minWidth: 0,
+                            fg: () =>
+                              isSelected()
+                                ? theme().text.action.primary.focused
+                                : theme().text.base,
+                            attributes: () =>
+                              isSelected() ? TextAttributes.BOLD : undefined,
+                          },
+                          () =>
+                            `${isSelected() ? "▸ " : "  "}${item.session.title}`
+                        ),
+                        el(
+                          "text",
+                          {
+                            wrapMode: "none",
+                            flexShrink: 0,
+                            fg: () =>
+                              isSelected()
+                                ? theme().text.action.primary.focused
+                                : theme().text.action.primary.base,
+                          },
+                          () =>
+                            ` [${item.matchBadge}] ${formatRelativeTime(item.session.timeUpdated)}`
+                        )
+                      ),
                       el(
                         "text",
                         {
                           wrapMode: "none",
                           truncate: true,
-                          flexShrink: 1,
-                          minWidth: 0,
-                          fg: () =>
-                            isSelected()
-                              ? theme().text.action.primary.focused
-                              : theme().text.base,
-                          attributes: () =>
-                            isSelected() ? TextAttributes.BOLD : undefined,
-                        },
-                        () =>
-                          `${isSelected() ? "› " : "  "}${item.session.title}`
-                      ),
-                      el(
-                        "text",
-                        {
-                          wrapMode: "none",
-                          flexShrink: 0,
                           fg: () =>
                             isSelected()
                               ? theme().text.action.primary.focused
                               : theme().text.muted,
                         },
-                        () =>
-                          ` [${item.matchBadge}] ${formatRelativeTime(item.session.timeUpdated)}`
+                        () => `  ${item.bestSnippet}`
                       )
-                    ),
+                    );
+                  },
+                });
+              },
+            })
+          )
+        ),
+
+        // Right Card: Rich Match & Session Context Preview (56% width)
+        el(
+          "box",
+          {
+            flexGrow: 1,
+            height: "100%",
+            minWidth: 0,
+            minHeight: 0,
+            flexDirection: "column",
+            backgroundColor: () =>
+              theme().background.raised?.base ?? theme().background.base,
+            border: true,
+            borderColor: () =>
+              focusPane() === "preview"
+                ? theme().text.action.primary.base
+                : theme().border.base,
+            paddingLeft: 2,
+            paddingRight: 2,
+            paddingTop: 0,
+            paddingBottom: 1,
+            onMouseDown: () => setFocusPane("preview"),
+          },
+          el(
+            "box",
+            {
+              flexDirection: "row",
+              justifyContent: "space-between",
+              border: ["bottom"],
+              borderColor: () => theme().border.base,
+              marginBottom: 1,
+              flexShrink: 0,
+            },
+            el(
+              "text",
+              {
+                fg: () => theme().text.action.primary.base,
+                attributes: TextAttributes.BOLD,
+              },
+              "◈ CONVERSATION & MATCH PREVIEW"
+            ),
+            el(
+              "text",
+              { fg: () => theme().text.muted },
+              () =>
+                selectedMatch()
+                  ? `${selectedMatch()?.totalMatches ?? 0} match${selectedMatch()?.totalMatches === 1 ? "" : "es"} · updated ${formatRelativeTime(selectedMatch()?.session.timeUpdated ?? 0)}`
+                  : "no selection"
+            )
+          ),
+          el(
+            "scrollbox",
+            {
+              id: "session-search-preview",
+              ref: (r: unknown) => {
+                previewScrollRef = r;
+              },
+              flexGrow: 1,
+              minWidth: 0,
+              minHeight: 0,
+              focused: () => focusPane() === "preview",
+            },
+            createComponent(Show, {
+              get when() {
+                return selectedMatch();
+              },
+              get fallback() {
+                return el(
+                  "text",
+                  { fg: () => theme().text.muted },
+                  "Select a session on the left to inspect matching messages, tools, and files."
+                );
+              },
+              get children() {
+                return el(
+                  "box",
+                  { flexDirection: "column", gap: 1 },
+                  el(
+                    "box",
+                    {
+                      flexDirection: "column",
+                      paddingLeft: 1,
+                      border: ["left"],
+                      borderColor: () => theme().text.action.primary.base,
+                    },
                     el(
                       "text",
                       {
-                        wrapMode: "none",
-                        truncate: true,
-                        fg: () =>
-                          isSelected()
-                            ? theme().text.action.primary.focused
-                            : theme().text.muted,
+                        fg: () => theme().text.base,
+                        attributes: TextAttributes.BOLD,
                       },
-                      () => `  ${item.bestSnippet}`
-                    )
-                  );
-                },
-              });
-            },
-          })
-        ),
-
-        // Right Pane: Rich Match & Session Context Preview (56% width)
-        el(
-          "scrollbox",
-          {
-            id: "session-search-preview",
-            ref: (r: unknown) => {
-              previewScrollRef = r;
-            },
-            flexGrow: 1,
-            minWidth: 0,
-            minHeight: 0,
-            paddingX: 2,
-            paddingY: 1,
-            focused: () => focusPane() === "preview",
-            onMouseDown: () => setFocusPane("preview"),
-          },
-          createComponent(Show, {
-            get when() {
-              return selectedMatch();
-            },
-            get fallback() {
-              return el(
-                "text",
-                { fg: () => theme().text.muted },
-                "Select a session on the left to inspect matching messages, tools, and files."
-              );
-            },
-            get children() {
-              return el(
-                "box",
-                { flexDirection: "column", gap: 1 },
-                el(
-                  "text",
-                  {
-                    fg: () => theme().text.base,
-                    attributes: TextAttributes.BOLD,
-                  },
-                  () => selectedMatch()?.session.title ?? ""
-                ),
-                el(
-                  "text",
-                  { fg: () => theme().text.muted, wrapMode: "word" },
-                  () => {
-                    const m = selectedMatch();
-                    if (!m) return "";
-                    const dir = m.session.directory
-                      ? props.context.ui.format.path(m.session.directory)
-                      : "(no directory)";
-                    return `${dir} · updated ${formatRelativeTime(m.session.timeUpdated)} · ${m.totalMatches} match${m.totalMatches === 1 ? "" : "es"}`;
-                  }
-                ),
-                createComponent(Show, {
-                  get when() {
-                    return (selectedMatch()?.session.tools.length ?? 0) > 0;
-                  },
-                  get children() {
-                    return el(
+                      () => selectedMatch()?.session.title ?? ""
+                    ),
+                    el(
                       "text",
                       { fg: () => theme().text.muted, wrapMode: "word" },
-                      () =>
-                        `Tools: ${selectedMatch()?.session.tools.slice(0, 8).join(", ")}`
-                    );
-                  },
-                }),
-                createComponent(Show, {
-                  get when() {
-                    return (selectedMatch()?.session.files.length ?? 0) > 0;
-                  },
-                  get children() {
-                    return el(
-                      "text",
-                      { fg: () => theme().text.muted, wrapMode: "word" },
-                      () =>
-                        `Files: ${selectedMatch()
-                          ?.session.files.slice(0, 4)
-                          .map((f: string) => props.context.ui.format.path(f))
-                          .join(", ")}${(selectedMatch()?.session.files.length ?? 0) > 4 ? ` (+${(selectedMatch()?.session.files.length ?? 0) - 4} more)` : ""}`
-                    );
-                  },
-                }),
-                el(
-                  "text",
-                  {
-                    fg: () => theme().text.base,
-                    attributes: TextAttributes.BOLD,
-                    marginTop: 1,
-                  },
-                  () =>
-                    query().trim()
-                      ? `Matching Snippets (${selectedMatch()?.matches.length ?? 0} shown)`
-                      : "Recent Conversation Preview"
-                ),
-                createComponent(For, {
-                  get each() {
-                    return selectedMatch()?.matches ?? [];
-                  },
-                  children: (hit: SearchSessionMatch["matches"][number], idx: () => number) => {
-                    const isActiveSnippet = () => idx() === selectedSnippetIndex();
-                    return el(
-                      "box",
-                      {
-                        id: () => `snippet-row-${idx()}`,
-                        flexDirection: "column",
-                        paddingLeft: 1,
-                        marginBottom: 1,
-                        border: ["left"],
-                        borderColor: () =>
-                          isActiveSnippet()
-                            ? theme().text.action.primary.base
-                            : theme().border.base,
-                        onMouseUp: () => {
-                          setSelectedSnippetIndex(idx());
-                          openSelected(hit);
-                        },
+                      () => {
+                        const m = selectedMatch();
+                        if (!m) return "";
+                        const dir = m.session.directory
+                          ? props.context.ui.format.path(m.session.directory)
+                          : "(no directory)";
+                        return `${dir} · updated ${formatRelativeTime(m.session.timeUpdated)} · ${m.totalMatches} match${m.totalMatches === 1 ? "" : "es"}`;
+                      }
+                    ),
+                    createComponent(Show, {
+                      get when() {
+                        return (selectedMatch()?.session.tools.length ?? 0) > 0;
                       },
-                      el(
-                        "text",
+                      get children() {
+                        return el(
+                          "text",
+                          { fg: () => theme().text.muted, wrapMode: "word" },
+                          () =>
+                            `Tools: ${selectedMatch()?.session.tools.slice(0, 8).join(", ")}`
+                        );
+                      },
+                    }),
+                    createComponent(Show, {
+                      get when() {
+                        return (selectedMatch()?.session.files.length ?? 0) > 0;
+                      },
+                      get children() {
+                        return el(
+                          "text",
+                          { fg: () => theme().text.muted, wrapMode: "word" },
+                          () =>
+                            `Files: ${selectedMatch()
+                              ?.session.files.slice(0, 4)
+                              .map((f: string) => props.context.ui.format.path(f))
+                              .join(", ")}${(selectedMatch()?.session.files.length ?? 0) > 4 ? ` (+${(selectedMatch()?.session.files.length ?? 0) - 4} more)` : ""}`
+                        );
+                      },
+                    })
+                  ),
+                  el(
+                    "text",
+                    {
+                      fg: () => theme().text.action.primary.base,
+                      attributes: TextAttributes.BOLD,
+                      marginTop: 1,
+                    },
+                    () =>
+                      query().trim()
+                        ? `◈ MATCHING SNIPPETS (${selectedMatch()?.matches.length ?? 0} SHOWN)`
+                        : "◈ RECENT CONVERSATION PREVIEW"
+                  ),
+                  createComponent(For, {
+                    get each() {
+                      return selectedMatch()?.matches ?? [];
+                    },
+                    children: (hit: SearchSessionMatch["matches"][number], idx: () => number) => {
+                      const isActiveSnippet = () => idx() === selectedSnippetIndex();
+                      return el(
+                        "box",
                         {
-                          fg: () =>
+                          id: () => `snippet-row-${idx()}`,
+                          flexDirection: "column",
+                          paddingLeft: 1,
+                          marginBottom: 1,
+                          border: ["left"],
+                          borderColor: () =>
                             isActiveSnippet()
                               ? theme().text.action.primary.base
-                              : theme().text.muted,
-                          attributes: TextAttributes.BOLD,
-                        },
-                        () => {
-                          const roleTag =
-                            hit.kind === "title"
-                              ? "[TITLE]"
-                              : hit.kind === "fuzzy"
-                                ? `[FUZZY · ${hit.role.toUpperCase()}]`
-                                : hit.kind === "filepath"
-                                  ? "[FILE]"
-                                  : hit.kind === "tool"
-                                    ? `[TOOL:${hit.toolName || "call"}]`
-                                    : hit.role === "user"
-                                      ? "[USER]"
-                                      : "[ASSISTANT]";
-                          const prefix = isActiveSnippet() ? "› " : "";
-                          return `${prefix}${roleTag} · ${formatRelativeTime(hit.timeCreated)}`;
-                        }
-                      ),
-                      el(
-                        "text",
-                        {
-                          wrapMode: "word",
-                          fg: () => theme().text.base,
-                        },
-                        createComponent(For, {
-                          get each() {
-                            return splitHighlightedText(hit.snippet, hit.matchedTerm);
+                              : theme().border.base,
+                          onMouseUp: () => {
+                            setSelectedSnippetIndex(idx());
+                            openSelected(hit);
                           },
-                          children: (seg: { text: string; match: boolean }) =>
-                            el(
-                              "span",
-                              {
-                                fg: () =>
-                                  seg.match
-                                    ? theme().text.action.primary.base
-                                    : theme().text.base,
-                                attributes: () =>
-                                  seg.match ? TextAttributes.BOLD : undefined,
-                              },
-                              seg.text
-                            ),
-                        })
-                      )
-                    );
-                  },
-                })
-              );
-            },
-          })
-        )
-      ),
-
-      // 4. Footer Shortcut Bar
-      el(
-        "box",
-        {
-          flexDirection: "row",
-          justifyContent: "space-between",
-          gap: 2,
-          paddingX: 2,
-          paddingY: 1,
-          flexShrink: 0,
-          border: ["top"],
-          borderColor: () => theme().border.base,
-        },
-        el(
-          "text",
-          {
-            fg: () => theme().text.muted,
-            flexShrink: 1,
-            minWidth: 0,
-            wrapMode: "none",
-            truncate: true,
-          },
-          "enter open · ↑/↓ or ^n/^k select · ^p scope · ^g role · ^t date · ^r mode · tab pane"
-        ),
-        el(
-          "text",
-          { fg: () => theme().text.muted, flexShrink: 0, wrapMode: "none" },
-          "0 tokens"
+                        },
+                        el(
+                          "text",
+                          {
+                            fg: () =>
+                              isActiveSnippet()
+                                ? theme().text.action.primary.base
+                                : theme().text.muted,
+                            attributes: TextAttributes.BOLD,
+                          },
+                          () => {
+                            const roleTag =
+                              hit.kind === "title"
+                                ? "[TITLE]"
+                                : hit.kind === "fuzzy"
+                                  ? `[FUZZY · ${hit.role.toUpperCase()}]`
+                                  : hit.kind === "filepath"
+                                    ? "[FILE]"
+                                    : hit.kind === "tool"
+                                      ? `[TOOL:${hit.toolName || "call"}]`
+                                      : hit.role === "user"
+                                        ? "[USER]"
+                                        : "[ASSISTANT]";
+                            const prefix = isActiveSnippet() ? "▸ " : "";
+                            return `${prefix}${roleTag} · ${formatRelativeTime(hit.timeCreated)}`;
+                          }
+                        ),
+                        el(
+                          "text",
+                          {
+                            wrapMode: "word",
+                            fg: () => theme().text.base,
+                          },
+                          createComponent(For, {
+                            get each() {
+                              return splitHighlightedText(hit.snippet, hit.matchedTerm);
+                            },
+                            children: (seg: { text: string; match: boolean }) =>
+                              el(
+                                "span",
+                                {
+                                  fg: () =>
+                                    seg.match
+                                      ? theme().text.action.primary.base
+                                      : theme().text.base,
+                                  attributes: () =>
+                                    seg.match ? TextAttributes.BOLD : undefined,
+                                },
+                                seg.text
+                              ),
+                          })
+                        )
+                      );
+                    },
+                  })
+                );
+              },
+            })
+          )
         )
       )
     );
