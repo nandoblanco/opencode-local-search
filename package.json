@@ -10,7 +10,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./tui": "./src/tui.ts"
+    "./tui": "./src/tui.ts",
+    "./gui-experimental": "./dist/gui-experimental.cjs",
+    "./rpc": "./src/rpc.ts"
   },
   "bin": {
     "opencode-local-search": "cli.js"
@@ -18,12 +20,17 @@
   "files": [
     "cli.js",
     "src/*.ts",
+    "src/*.tsx",
+    "src/*.css",
+    "dist/*.cjs",
     "assets/screenshot.png",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --no-warnings --experimental-strip-types --test test/search.test.ts"
+    "build": "vite build",
+    "test": "node --no-warnings --experimental-strip-types --test test/search.test.ts",
+    "test:browser": "node test/search-shortcut.mjs"
   },
   "sideEffects": false,
   "engines": {
@@ -60,10 +67,22 @@
       "optional": true
     }
   },
+  "overrides": {
+    "glob": "14.0.5",
+    "minimatch": "11.0.8"
+  },
   "author": "nandoblanco",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nandoblanco/opencode-local-search.git"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0",
+    "@opencode/plugin": "^2.2.4",
+    "@opencode/theme": "^2.2.4",
+    "solid-js": "^1.9.18",
+    "vite": "^8.3.5",
+    "vite-plugin-solid": "^2.11.15"
   }
 }

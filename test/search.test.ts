@@ -15,6 +15,8 @@ import {
   type SessionIndex,
   searchSessionIndex,
 } from "../src/search.ts";
+import server, { executeSearchQuery } from "../src/server.ts";
+import { SearchRpc } from "../src/rpc.ts";
 
 describe("parseSearchQuery", () => {
   it("parses multi-word terms and quoted phrases", () => {
@@ -241,6 +243,30 @@ describe("loadSessionIndex (SQLite V2 schema)", () => {
       assert.equal(matches[0].session.id, "ses_test");
       assert.equal(matches[0].bestMatch?.messageId, "msg_1");
       assert.equal(matches[0].matches[0]?.messageId, "msg_1");
+
+      const rpcOutput = await executeSearchQuery(
+        {
+          query: "zero token",
+          scope: "all",
+          forceReload: false,
+        },
+        dbPath
+      );
+      assert.equal(rpcOutput.totalSessions, 1);
+      assert.equal(rpcOutput.results.length, 1);
+      assert.equal(rpcOutput.results[0].id, "ses_test");
+      assert.equal(rpcOutput.results[0].bestMessageId, "msg_1");
+      assert.equal(rpcOutput.results[0].recentEntries.length, 1);
+
+      let registeredDef: unknown = null;
+      await server.setup({
+        rpc: {
+          async register(def: unknown) {
+            registeredDef = def;
+          },
+        },
+      } as never);
+      assert.equal(registeredDef, SearchRpc);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

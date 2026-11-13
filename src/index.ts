@@ -1,7 +1,7 @@
-"use strict";
+import server from "./server.ts"
 
-import server from "./server.ts";
-
-export { server };
-export * from "./search.ts";
-export default server;
+export { server }
+export default server
+export * from "./search.ts"
+export * from "./rpc.ts"
+export { executeSearchQuery } from "./server.ts"

@@ -1,8 +1,18 @@
 # opencode-local-search
 
-**Local-first, zero-token interactive session search plugin for OpenCode**: indexes your local SQLite session history automatically, previews matching messages, tools, and files as you type, and jumps straight to the exact matched message in any conversation.
+**Local-first, zero-token interactive session search plugin for OpenCode**: indexes local SQLite session history, previews matching messages, tools, and files as you type, and opens matching conversations from the TUI or OpenCode Desktop.
 
 ![opencode-local-search TUI preview](./assets/screenshot.png)
+
+## OpenCode Desktop Support
+
+**Replaces OpenCode Desktop's built-in session search.** The titlebar, vertical-tabs, Home session search, and built-in Search sessions dialog route into this plugin's Session Search interface.
+
+**Now available in OpenCode Desktop as well as the TUI.** Search local conversation history in a persistent Session Search side panel, preview matching messages and file/tool details, and open matching sessions without a model turn. Press `Ctrl+Shift+F` to open or focus the panel, or `Ctrl+Alt+F` to toggle it. When no session is active, search opens in a fallback dialog.
+
+**In the CLI/TUI, search is an additional tool rather than a replacement.** Open it with `/search` or the command palette. The built-in `/sessions` picker remains available.
+
+One global OpenCode V2 plugin entry loads the server RPC bridge, TUI, and Desktop integration together. Both interfaces search the same local session history; see [Installation](#installation) for setup.
 
 ## Background
 
@@ -28,6 +38,7 @@ This project started as a small local CLI script wired to a custom `/search` com
 | Session-level multi-term AND ranking | Searching `auth cookie` finds sessions where both terms appear anywhere across the session title, user prompts, assistant replies, tool calls, or file paths, ranking single-message co-occurrences higher |
 | Typo-tolerant fuzzy & regex search | Supports `"exact phrase"`, `/regex/i` (`re:`), explicit `~fuzzy` terms, and automatic bounded Levenshtein fallback when a multi-word query has a typo |
 | Auto-scroll to matched message | Pressing `Enter` (or clicking any snippet card in the preview pane) opens the session and automatically scrolls the transcript to the exact matched message |
+| OpenCode Desktop search | Persistent Session Search side panel backed by `SearchRpc.query`, with a fallback dialog when no session is active, scope and query filters, snippets, and session navigation |
 
 ## Installation
 
@@ -49,24 +60,24 @@ opencode plugin add github:nandoblanco/opencode-local-search
 
 ### Option 2: Manual Configuration
 
-Add `@nandoblanco/opencode-local-search` to `~/.config/opencode/cli.json` (or `$XDG_CONFIG_HOME/opencode/cli.json`):
+Add `@nandoblanco/opencode-local-search` to the global `~/.config/opencode/opencode.jsonc` (or `$XDG_CONFIG_HOME/opencode/opencode.jsonc`) to load the server RPC bridge, TUI, and Desktop parts together:
 
 ```json
 {
 	"plugins": [
-		[
-			"@nandoblanco/opencode-local-search",
-			{
+		{
+			"package": "@nandoblanco/opencode-local-search",
+			"options": {
 				"dialogWidth": "80%"
 			}
-		]
+		}
 	]
 }
 ```
 
 ### From a Local Directory
 
-Clone or copy this folder and reference it in `~/.config/opencode/cli.json` (no `npm install` or build step required):
+For development, use Node.js 26.4 or newer to meet the OpenTUI dependency's declared minimum. Clone this repository, run `npm ci` and `npm run build` to build the Desktop bundle, then reference the directory in the global `opencode.jsonc`. TUI-only use does not need the GUI build. The root `overrides` pin patched `glob` and `minimatch` versions for this repository's development dependencies; they do not alter the OpenCode host application's dependencies:
 
 ```json
 {
@@ -89,6 +100,12 @@ Clone or copy this folder and reference it in `~/.config/opencode/cli.json` (no 
 	}
 }
 ```
+
+### OpenCode Desktop
+
+Run `/search [query]` or press `Ctrl+Shift+F` (`Cmd+Shift+F` on macOS) to open and focus the persistent Session Search side panel. `Ctrl+Alt+F` (`Cmd+Option+F`) toggles it. Without an active session, these commands open a dialog. The plugin also intercepts the built-in titlebar, vertical-tab, and home-session search entry points.
+
+Desktop requests use a 35 ms debounce and a sequence counter to discard stale responses. They call `SearchRpc.query` on the server, which returns up to 60 session results with message snippets and file/tool metadata. The TUI continues to query SQLite locally. Exact-message scrolling in the TUI uses the render-tree traversal described below; Desktop uses its own session navigation path.
 
 ## TUI Query Syntax (`/search`)
 
@@ -204,7 +221,7 @@ When you press `Enter` on a session (or click a specific snippet card in the rig
 
 ### 7. Agent Tools Registered by the Server Plugin
 
-`src/server.ts` is intentionally a no-op entrypoint that registers **zero LLM agent tools**. All session indexing, filtering, and navigation happen strictly inside the TUI (`src/tui.ts`), adding **0 schema tokens** to your model context.
+`src/server.ts` registers `SearchRpc.query`, implemented by `executeSearchQuery()`, for Desktop clients. It loads the read-only SQLite index and runs the same query parser and ranking functions as the TUI. The server registers **zero LLM agent tools** and adds **0 schema tokens** to model context. `src/rpc.ts` exports the shared contract; `src/gui.tsx` and `src/gui.css` build to `dist/gui-experimental.cjs` with `npm run build`.
 
 ### 8. Token Usage Breakdown
 
@@ -216,10 +233,11 @@ Every operation in `opencode-local-search` uses zero LLM tokens:
 | Live filtering, fuzzy matching & snippet preview | **0 tokens** | Runs synchronously in memory (`searchSessionIndex`) inside the TUI process on every keystroke |
 | Jumping to a matched session & message (`Enter`) | **0 tokens** | Navigates via `context.ui.router.navigate()` and scrolls the local `@opentui` transcript tree directly |
 | Server plugin entrypoint (`src/server.ts`) | **0 schema tokens** | Registers no LLM tools or system prompts |
+| Desktop queries and session navigation | **0 tokens** | Uses the server RPC bridge and Desktop layout API without a model turn |
 
 ## Configuration Options
 
-Options can be passed in `~/.config/opencode/cli.json` (or `opencode.jsonc`) or via environment variables:
+Configure the package in the global `opencode.jsonc` for all interfaces. `dialogWidth` controls the TUI popup only; Desktop uses its panel or dialog layout. TUI-specific options can also be passed in `cli.json`:
 
 ```json
 {

@@ -364,7 +364,7 @@ function createTuiRenderer() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleKeyPress = (event: any) => {
       const name = String(event.name || "").toLowerCase();
-      const enter = ["return", "enter", "linefeed"].includes(name);
+      const enter = ["return", "enter", "kpenter", "linefeed"].includes(name);
 
       if (name === "escape") {
         event.preventDefault();
@@ -1290,9 +1290,13 @@ function scrollToMatchedMessage(
         (a.viewport?.width ?? 0) * (a.viewport?.height ?? 0)
     );
     const scrollBox = scrollBoxes[0];
-    const topChildren =
+    const contentRoot =
       typeof scrollBox.content?.getChildren === "function"
-        ? scrollBox.content.getChildren()
+        ? scrollBox.content
+        : scrollBox;
+    const topChildren =
+      typeof contentRoot?.getChildren === "function"
+        ? contentRoot.getChildren()
         : [];
     if (!topChildren.length || (scrollBox.scrollHeight ?? 0) <= 0) {
       return false;
@@ -1355,7 +1359,7 @@ function scrollToMatchedMessage(
         walkContent(child);
       }
     };
-    walkContent(scrollBox.content);
+    walkContent(contentRoot);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let targetNode: any = idMatchNode;
