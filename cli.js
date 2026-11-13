@@ -221,6 +221,21 @@ export async function installPlugin(options) {
     ? '["' + pkgName + '", { "dialogWidth": "' + String(opts.dialogWidth) + '" }]'
     : '"' + pkgName + '"';
 
+  const jsoncCandidate = path.join(configDir, cliName + ".jsonc");
+  const jsonCandidate = path.join(configDir, cliName + ".json");
+  const serverConfigFile = fs.existsSync(jsoncCandidate)
+    ? jsoncCandidate
+    : fs.existsSync(jsonCandidate)
+      ? jsonCandidate
+      : jsoncCandidate;
+
+  const serverStatus = addPluginToJsoncFile(
+    serverConfigFile,
+    "https://" + cliName + ".ai/config.json",
+    '"' + pkgName + '"',
+    matchKey
+  );
+
   const cliConfigFile = path.join(configDir, "cli.json");
   const cliStatus = addPluginToJsoncFile(
     cliConfigFile,
@@ -231,6 +246,8 @@ export async function installPlugin(options) {
 
   return {
     configDir,
+    serverConfigFile,
+    serverStatus,
     cliConfigFile,
     cliStatus,
   };
@@ -256,7 +273,8 @@ if (isDirectRun) {
     installPlugin({ configDir, dialogWidth })
       .then((res) => {
         console.log("opencode-local-search installed:");
-        console.log("  TUI config: " + res.cliConfigFile + " (" + res.cliStatus + ")");
+        console.log("  Server/Desktop config: " + res.serverConfigFile + " (" + res.serverStatus + ")");
+        console.log("  TUI config:            " + res.cliConfigFile + " (" + res.cliStatus + ")");
       })
       .catch((err) => {
         console.error("Install failed:", err);
