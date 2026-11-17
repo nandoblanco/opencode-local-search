@@ -25,6 +25,7 @@
     "dist/*.cjs",
     "assets/screenshot.png",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {

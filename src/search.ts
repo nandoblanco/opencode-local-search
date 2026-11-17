@@ -8,6 +8,8 @@ export type SearchMode = "smart" | "fuzzy" | "regex";
 export type RoleFilter = "all" | "user" | "assistant" | "shell";
 export type ScopeFilter = "all" | "project";
 export type DatePreset = "all" | "today" | "yesterday" | "7d" | "30d";
+import type { SearchSort } from "./sort.ts";
+export { SEARCH_SORT_LABELS, type SearchSort } from "./sort.ts";
 
 export interface SearchEntry {
   id: string;
@@ -29,6 +31,9 @@ export interface IndexedSession {
   directoryNorm: string;
   timeCreated: number;
   timeUpdated: number;
+  archived?: boolean;
+  contextTokens?: number;
+  totalTokens?: number;
   tools: string[];
   files: string[];
   entries: SearchEntry[];
@@ -63,6 +68,7 @@ export interface SearchSessionMatch {
 }
 
 export interface SearchOptions {
+  sort?: SearchSort;
   scope?: ScopeFilter;
   currentDirectory?: string;
   role?: RoleFilter;
@@ -92,9 +98,13 @@ interface SqliteRowsDriver {
 }
 
 let cachedIndex: SessionIndex | null = null;
+let cachedSessionsMap: Map<string, IndexedSession> | null = null;
+let cachedSessionFiles: Map<string, Set<string>> | null = null;
+let cachedSessionTools: Map<string, Set<string>> | null = null;
+let cachedMaxUpdated = 0;
 let cachedIndexEvictTimer: ReturnType<typeof setTimeout> | null = null;
-const INDEX_TTL_MS = 6000; // Refresh at most every 6s unless forced
-const INDEX_IDLE_EVICT_MS = 120_000; // Free cached index after 2m idle
+const INDEX_TTL_MS = 2000; // Fast in-memory hit window before incremental check
+const INDEX_IDLE_EVICT_MS = 30 * 60_000; // Keep warm index in memory for 30m idle
 const MAX_INDEXED_TEXT_CHARS = 4000;
 
 function capIndexedText(text: string): string {
@@ -107,6 +117,10 @@ function scheduleIndexIdleEviction(): void {
   }
   cachedIndexEvictTimer = setTimeout(() => {
     cachedIndex = null;
+    cachedSessionsMap = null;
+    cachedSessionFiles = null;
+    cachedSessionTools = null;
+    cachedMaxUpdated = 0;
     cachedIndexEvictTimer = null;
   }, INDEX_IDLE_EVICT_MS);
   cachedIndexEvictTimer.unref?.();
@@ -240,16 +254,30 @@ function stringifyToolInput(input: unknown): string {
 export async function loadSessionIndex(force = false, customDbPath?: string): Promise<SessionIndex> {
   const dbPath = resolveDbPath(customDbPath);
   if (!force && cachedIndex && cachedIndex.dbPath === dbPath && Date.now() - cachedIndex.loadedAt < INDEX_TTL_MS) {
+    scheduleIndexIdleEviction();
     return cachedIndex;
   }
   if (!existsSync(dbPath)) {
     return { dbPath, loadedAt: Date.now(), sessions: [] };
   }
 
+  const canIncremental =
+    !force &&
+    cachedIndex !== null &&
+    cachedIndex.dbPath === dbPath &&
+    cachedSessionsMap !== null &&
+    cachedSessionFiles !== null &&
+    cachedSessionTools !== null;
+
+  if (!canIncremental) {
+    cachedMaxUpdated = 0;
+  }
+
   const db = await openReadOnlyDb(dbPath);
-  const sessionsMap = new Map<string, IndexedSession>();
-  const sessionFiles = new Map<string, Set<string>>();
-  const sessionTools = new Map<string, Set<string>>();
+  const sessionsMap = canIncremental ? cachedSessionsMap! : new Map<string, IndexedSession>();
+  const sessionFiles = canIncremental ? cachedSessionFiles! : new Map<string, Set<string>>();
+  const sessionTools = canIncremental ? cachedSessionTools! : new Map<string, Set<string>>();
+  const changedIds: string[] = [];
 
   try {
     const tables = new Set(
@@ -268,21 +296,35 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
         : v2Cols.has("workspace_directory")
           ? "COALESCE(workspace_directory, root_directory, '')"
           : "''";
-      const whereClause = v2Cols.has("time_archived") ? "WHERE time_archived IS NULL" : "";
+      const archiveExpr = v2Cols.has("time_archived") ? "time_archived" : "NULL";
 
-      const v2Sessions = db.all(`
-        SELECT id, title, ${dirExpr} AS directory, time_created, time_updated
-        FROM session_v2
-        ${whereClause}
-        ORDER BY time_updated DESC
-        LIMIT 800
-      `);
+      const v2Sessions = canIncremental
+        ? db.all(
+            `SELECT id, title, ${dirExpr} AS directory, time_created, time_updated, ${archiveExpr} AS time_archived
+             FROM session_v2
+             WHERE time_updated > ?
+             ORDER BY time_updated DESC`,
+            cachedMaxUpdated
+          )
+        : db.all(`
+            SELECT id, title, ${dirExpr} AS directory, time_created, time_updated, ${archiveExpr} AS time_archived
+            FROM session_v2
+            ORDER BY time_updated DESC
+          `);
+
+      if (canIncremental && v2Sessions.length === 0) {
+        cachedIndex!.loadedAt = Date.now();
+        scheduleIndexIdleEviction();
+        return cachedIndex!;
+      }
 
       for (const row of v2Sessions) {
         const id = String(row.id || "");
         if (!id) continue;
         const title = String(row.title || "(untitled session)");
         const directory = String(row.directory || "");
+        const timeUpdated = Number(row.time_updated || 0);
+        if (timeUpdated > cachedMaxUpdated) cachedMaxUpdated = timeUpdated;
         sessionsMap.set(id, {
           id,
           title,
@@ -290,43 +332,75 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
           directory,
           directoryNorm: normalizePath(directory),
           timeCreated: Number(row.time_created || 0),
-          timeUpdated: Number(row.time_updated || 0),
+          timeUpdated,
+          archived: row.time_archived != null,
           tools: [],
           files: [],
           entries: [],
         });
         sessionFiles.set(id, new Set());
         sessionTools.set(id, new Set());
+        changedIds.push(id);
       }
 
       if (tables.has("session_message") && sessionsMap.size > 0) {
-        const msgWhere = v2Cols.has("time_archived")
-          ? "WHERE s.time_archived IS NULL AND m.type IN ('user', 'assistant', 'shell')"
-          : "WHERE m.type IN ('user', 'assistant', 'shell')";
+        const targetIds = canIncremental ? changedIds : null;
+        const idFilterSql =
+          targetIds && targetIds.length > 0
+            ? ` AND session_id IN (${targetIds.map(() => "?").join(",")})`
+            : "";
+        const idJoinFilterSql =
+          targetIds && targetIds.length > 0
+            ? ` AND m.session_id IN (${targetIds.map(() => "?").join(",")})`
+            : "";
+        const idParams = targetIds && targetIds.length > 0 ? targetIds : [];
+
+        const msgWhere = `WHERE m.type IN ('user', 'assistant', 'shell')${idJoinFilterSql}`;
+        // Usage is read across assistant messages for loaded/updated sessions.
+        const usageRows = db.all(
+          `SELECT session_id, time_created, id, json_extract(data, '$.tokens') AS tokens
+           FROM session_message
+           WHERE type = 'assistant' AND json_valid(data)
+             AND json_type(data, '$.tokens') = 'object'${idFilterSql}
+           ORDER BY time_created ASC, id ASC`,
+          ...idParams
+        );
+        for (const row of usageRows) {
+          const session = sessionsMap.get(String(row.session_id));
+          if (!session) continue;
+          const tokens = JSON.parse(String(row.tokens)) as {
+            input: number; output: number; reasoning: number; cache: { read: number; write: number };
+          };
+          const input = tokens.input + tokens.cache.read + tokens.cache.write;
+          session.contextTokens = input;
+          session.totalTokens = (session.totalTokens ?? 0) + input + tokens.output + tokens.reasoning;
+        }
         let v2Messages: Record<string, unknown>[];
         try {
-          v2Messages = db.all(`
-            SELECT id, session_id, type, time_created, data
-            FROM (
-              SELECT m.id, m.session_id, m.type, m.time_created, m.data,
-                     ROW_NUMBER() OVER (PARTITION BY m.session_id ORDER BY m.time_created DESC) AS rn
-              FROM session_message m
-              JOIN session_v2 s ON s.id = m.session_id
-              ${msgWhere}
-            )
-            WHERE rn <= 250
-            ORDER BY time_created DESC
-            LIMIT 30000
-          `);
+          v2Messages = db.all(
+            `SELECT id, session_id, type, time_created, data
+             FROM (
+               SELECT m.id, m.session_id, m.type, m.time_created, m.data,
+                      ROW_NUMBER() OVER (PARTITION BY m.session_id ORDER BY m.time_created DESC) AS rn
+               FROM session_message m
+               JOIN session_v2 s ON s.id = m.session_id
+               ${msgWhere}
+             )
+             WHERE rn <= 250
+             ORDER BY time_created DESC
+             LIMIT 30000`,
+            ...idParams
+          );
         } catch {
-          v2Messages = db.all(`
-            SELECT m.id, m.session_id, m.type, m.time_created, m.data
-            FROM session_message m
-            JOIN session_v2 s ON s.id = m.session_id
-            ${msgWhere}
-            ORDER BY m.time_created DESC
-            LIMIT 18000
-          `);
+          v2Messages = db.all(
+            `SELECT m.id, m.session_id, m.type, m.time_created, m.data
+             FROM session_message m
+             JOIN session_v2 s ON s.id = m.session_id
+             ${msgWhere}
+             ORDER BY m.time_created DESC
+             LIMIT 18000`,
+            ...idParams
+          );
         }
 
         for (const row of v2Messages) {
@@ -468,14 +542,16 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
     }
 
     // 2. OpenCode V1 Fallback Schema (session + message + part)
-    if (tables.has("session") && tables.has("message") && tables.has("part")) {
+    if (!canIncremental && tables.has("session") && tables.has("message") && tables.has("part")) {
+      const v1Cols = new Set(db.all("PRAGMA table_info(session)").map((col) => String(col.name || "")));
+      const v1ArchiveExpr = v1Cols.has("time_archived") ? "time_archived" : "NULL";
       const v1Sessions = db.all(`
-        SELECT id, title, directory, time_created, time_updated
+        SELECT id, title, directory, time_created, time_updated, ${v1ArchiveExpr} AS time_archived
         FROM session
         ORDER BY time_updated DESC
-        LIMIT 500
       `);
 
+      let v1AddedCount = 0;
       for (const row of v1Sessions) {
         const id = String(row.id || "");
         if (!id || sessionsMap.has(id)) continue;
@@ -489,38 +565,42 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
           directoryNorm: normalizePath(directory),
           timeCreated: Number(row.time_created || 0),
           timeUpdated: Number(row.time_updated || 0),
+          archived: row.time_archived != null,
           tools: [],
           files: [],
           entries: [],
         });
         sessionFiles.set(id, new Set());
         sessionTools.set(id, new Set());
+        v1AddedCount++;
       }
 
-      let v1Parts: Record<string, unknown>[];
-      try {
-        v1Parts = db.all(`
-          SELECT id, message_id, session_id, time_created, part_data, role
-          FROM (
+      let v1Parts: Record<string, unknown>[] = [];
+      if (v1AddedCount > 0) {
+        try {
+          v1Parts = db.all(`
+            SELECT id, message_id, session_id, time_created, part_data, role
+            FROM (
+              SELECT p.id, p.message_id, p.session_id, p.time_created, p.data AS part_data,
+                     json_extract(m.data, '$.role') AS role,
+                     ROW_NUMBER() OVER (PARTITION BY p.session_id ORDER BY p.time_created DESC) AS rn
+              FROM part p
+              JOIN message m ON m.id = p.message_id
+            )
+            WHERE rn <= 250
+            ORDER BY time_created DESC
+            LIMIT 25000
+          `);
+        } catch {
+          v1Parts = db.all(`
             SELECT p.id, p.message_id, p.session_id, p.time_created, p.data AS part_data,
-                   json_extract(m.data, '$.role') AS role,
-                   ROW_NUMBER() OVER (PARTITION BY p.session_id ORDER BY p.time_created DESC) AS rn
+                   json_extract(m.data, '$.role') AS role
             FROM part p
             JOIN message m ON m.id = p.message_id
-          )
-          WHERE rn <= 250
-          ORDER BY time_created DESC
-          LIMIT 25000
-        `);
-      } catch {
-        v1Parts = db.all(`
-          SELECT p.id, p.message_id, p.session_id, p.time_created, p.data AS part_data,
-                 json_extract(m.data, '$.role') AS role
-          FROM part p
-          JOIN message m ON m.id = p.message_id
-          ORDER BY p.time_created DESC
-          LIMIT 12000
-        `);
+            ORDER BY p.time_created DESC
+            LIMIT 12000
+          `);
+        }
       }
 
       for (const row of v1Parts) {
@@ -602,6 +682,9 @@ export async function loadSessionIndex(force = false, customDbPath?: string): Pr
   }
 
   const sessions = [...sessionsMap.values()].sort((a, b) => b.timeUpdated - a.timeUpdated);
+  cachedSessionsMap = sessionsMap;
+  cachedSessionFiles = sessionFiles;
+  cachedSessionTools = sessionTools;
   cachedIndex = {
     dbPath,
     loadedAt: Date.now(),
@@ -1272,6 +1355,16 @@ export function searchSessionIndex(
     });
   }
 
-  results.sort((a, b) => b.score - a.score || b.session.timeUpdated - a.session.timeUpdated);
+  const sort = options.sort ?? "updated";
+  results.sort((a, b) => {
+    let difference = 0;
+    if (sort === "relevance") difference = b.score - a.score;
+    if (sort === "newest") difference = b.session.timeCreated - a.session.timeCreated;
+    if (sort === "oldest") difference = a.session.timeCreated - b.session.timeCreated;
+    if (sort === "title") difference = a.session.title.localeCompare(b.session.title);
+    if (sort === "context") difference = (b.session.contextTokens ?? -1) - (a.session.contextTokens ?? -1);
+    if (sort === "tokens") difference = (b.session.totalTokens ?? -1) - (a.session.totalTokens ?? -1);
+    return difference || b.session.timeUpdated - a.session.timeUpdated || a.session.id.localeCompare(b.session.id);
+  });
   return results.slice(0, limit);
 }

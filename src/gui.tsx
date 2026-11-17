@@ -27,7 +27,9 @@ import type {
   RoleFilter,
   ScopeFilter,
   SearchMode,
+  SearchSort,
 } from "./search.ts"
+import { SEARCH_SORT_LABELS } from "./sort.ts"
 
 const ROLE_ORDER: RoleFilter[] = ["all", "user", "assistant", "shell"]
 const DATE_ORDER: DatePreset[] = ["all", "today", "yesterday", "7d", "30d"]
@@ -231,6 +233,8 @@ function SearchSurface(props: {
   const [role, setRole] = createSignal<RoleFilter>("all")
   const [datePreset, setDatePreset] = createSignal<DatePreset>("all")
   const [mode, setMode] = createSignal<SearchMode>("smart")
+  const [sort, setSort] = createSignal<SearchSort>("updated")
+  const [restoring, setRestoring] = createSignal(false)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [selectedMatchIdx, setSelectedMatchIdx] = createSignal(0)
   const [activePane, setActivePane] = createSignal<"sessions" | "matches">(
@@ -278,6 +282,7 @@ function SearchSurface(props: {
         role: role(),
         datePreset: datePreset(),
         mode: mode(),
+        sort: sort(),
         limit: 60,
         forceReload,
       })
@@ -314,12 +319,13 @@ function SearchSurface(props: {
     void role()
     void datePreset()
     void mode()
+    void sort()
     void currentDirectory()
 
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       void runQuery(false)
-    }, 35)
+    }, 16)
   })
 
   onCleanup(() => {
@@ -442,6 +448,21 @@ function SearchSurface(props: {
       title: "Copied session ID",
       description: session.id,
     })
+  }
+
+  async function unarchiveSession(session: RpcSessionMatch) {
+    if (restoring()) return
+    setRestoring(true)
+    try {
+      const client = props.ctx.sessions.current()?.server?.client ??
+        props.ctx.servers.get(resolveServerId(props.ctx))?.client ?? props.ctx.client
+      await client.session.update({ sessionID: session.id, archived: false })
+      await runQuery(true)
+    } catch (err) {
+      props.ctx.toast.show({ variant: "error", title: "Unable to unarchive session", description: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setRestoring(false)
+    }
   }
 
   function appendSyntaxToken(token: string) {
@@ -599,6 +620,16 @@ function SearchSurface(props: {
             </div>
 
             <ui.Menu
+              label={`Sort: ${SEARCH_SORT_LABELS[sort()]}`}
+              trigger="button"
+              items={(Object.entries(SEARCH_SORT_LABELS) as [SearchSort, string][]).map(([value, label]) => ({
+                label,
+                icon: sort() === value ? "check-small" : undefined,
+                onSelect: () => { setSort(value); setSelectedIndex(0) },
+              }))}
+            />
+
+            <ui.Menu
               label={
                 activeFilterCount() > 0
                   ? `Filters (${activeFilterCount()})`
@@ -682,6 +713,14 @@ function SearchSurface(props: {
 
       <Show when={!errorMsg()}>
         <div class="ols-split">
+          <Show when={loading()}>
+            <div class="ols-loading-center" role="status" aria-live="polite">
+              <div class="ols-loading-pill">
+                <span class="ols-spinner" aria-hidden="true" />
+                <span>Searching...</span>
+              </div>
+            </div>
+          </Show>
           <div
             class={`ols-column ols-column--list ${
               activePane() === "sessions" ? "ols-column--active" : ""
@@ -692,25 +731,27 @@ function SearchSurface(props: {
               <Show
                 when={results().length > 0}
                 fallback={
-                  <div class="ols-empty">
-                    <div class="ols-empty-title">No matching sessions</div>
-                    <div class="ols-empty-sub">
-                      <Show
-                        when={scope() === "project"}
-                        fallback="Try Fuzzy mode or fewer search terms."
-                      >
-                        No hits in this workspace. Switch to{" "}
-                        <button
-                          type="button"
-                          class="ols-inline-link"
-                          onClick={toggleScope}
+                  <Show when={!loading()}>
+                    <div class="ols-empty">
+                      <div class="ols-empty-title">No matching sessions</div>
+                      <div class="ols-empty-sub">
+                        <Show
+                          when={scope() === "project"}
+                          fallback="Try Fuzzy mode or fewer search terms."
                         >
-                          All workspaces
-                        </button>{" "}
-                        to search everywhere.
-                      </Show>
+                          No hits in this workspace. Switch to{" "}
+                          <button
+                            type="button"
+                            class="ols-inline-link"
+                            onClick={toggleScope}
+                          >
+                            All workspaces
+                          </button>{" "}
+                          to search everywhere.
+                        </Show>
+                      </div>
                     </div>
-                  </div>
+                  </Show>
                 }
               >
                 <For each={results()}>
@@ -755,6 +796,10 @@ function SearchSurface(props: {
                         </Show>
 
                         <div class="ols-row-meta">
+                          <Show when={item.archived}><span class="ols-row-hit-badge">Archived</span></Show>
+                          <Show when={sort() === "context" || sort() === "tokens"}>
+                            <span>{sort() === "context" ? "Context" : "Total"}: {(sort() === "context" ? item.contextTokens : item.totalTokens)?.toLocaleString() ?? "Not recorded"}</span>
+                          </Show>
                           <Show when={query().trim().length > 0}>
                             <span class="ols-row-hit-badge">
                               {item.matchBadge}
@@ -797,6 +842,7 @@ function SearchSurface(props: {
                     <div class="ols-detail-heading">
                       <div class="ols-detail-title">{session().title}</div>
                       <div class="ols-detail-meta">
+                        <Show when={session().archived}><span>Archived</span></Show>
                         <span>{session().directory || "Global"}</span>
                         <span>·</span>
                         <span>{formatDateFull(session().timeUpdated)}</span>
@@ -804,6 +850,9 @@ function SearchSurface(props: {
                     </div>
 
                     <div class="ols-detail-actions">
+                      <Show when={session().archived}>
+                        <ui.Button size="small" busy={restoring()} onClick={() => void unarchiveSession(session())}>Unarchive</ui.Button>
+                      </Show>
                       <ui.Tooltip value="Copy session ID">
                         <ui.IconButton
                           icon="copy"
@@ -964,9 +1013,9 @@ function SearchSurface(props: {
 export default Plugin.define({
   i18n: {
     en: {
-      "search.title": "Search Sessions",
+      "search.title": "Search",
       "search.command": "Search session history...",
-      "search.panel": "Session Search",
+      "search.panel": "Search",
     },
   },
   setup(ctx) {
@@ -984,7 +1033,7 @@ export default Plugin.define({
         searchFallbackDialog = ctx.dialogs.open((dialog) => {
           onCleanup(() => { searchFallbackDialog = undefined })
           return (
-            <ui.Dialog title="Search Sessions" size="x-large">
+            <ui.Dialog title="Search" size="x-large">
               <SearchSurface ctx={ctx} variant="modal" initialQuery={initialQuery} onClose={dialog.close} />
             </ui.Dialog>
           )
@@ -1105,8 +1154,35 @@ export default Plugin.define({
       document.addEventListener("click", handleCaptureClick, true)
       document.addEventListener("focusin", handleCaptureFocusIn, true)
 
+      const syncBuiltinSearchButtonLabel = () => {
+        const buttons = document.querySelectorAll<HTMLButtonElement>(
+          'button[data-action="vertical-tabs-search"]',
+        )
+        for (const btn of buttons) {
+          for (const span of btn.querySelectorAll("span")) {
+            const txt = span.textContent?.trim().toLowerCase() ?? ""
+            if (txt === "search sessions") {
+              span.textContent = "Search"
+              span.classList.add("whitespace-nowrap")
+            } else if (span.classList.contains("ms-auto") || span.querySelector("bdi, kbd")) {
+              span.remove()
+            }
+          }
+          if (btn.getAttribute("aria-label")?.toLowerCase() === "search sessions") {
+            btn.setAttribute("aria-label", "Search")
+          }
+          if (btn.getAttribute("title")?.toLowerCase() === "search sessions") {
+            btn.setAttribute("title", "Search")
+          }
+        }
+      }
+
+      syncBuiltinSearchButtonLabel()
+      setTimeout(syncBuiltinSearchButtonLabel, 50)
+
       const redirectedInputs = new WeakSet<HTMLInputElement>()
       const observer = new MutationObserver(() => {
+        syncBuiltinSearchButtonLabel()
         const builtinInput = document.querySelector<HTMLInputElement>(
           '.command-palette input[placeholder="Search sessions"], .command-palette-dialog input[placeholder="Search sessions..."]',
         )
@@ -1153,7 +1229,7 @@ export default Plugin.define({
         return {
           menu: "session.panel",
           id: "search",
-          title: "Session Search",
+          title: "Search",
           description: "Search conversation history",
           icon: "magnifying-glass",
           keybind: `${ctx.id}.search-panel`,
