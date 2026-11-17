@@ -211,11 +211,57 @@
 
 /* Split layout */
 .ols-split {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(260px, 38%) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.ols-loading-center {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 14, 17, 0.42);
+  backdrop-filter: blur(1.5px);
+  pointer-events: none;
+}
+
+.ols-root[data-scheme="light"] .ols-loading-center {
+  background: rgba(246, 246, 248, 0.52);
+}
+
+.ols-loading-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--ols-bg-elevated);
+  border: 1px solid var(--ols-border-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  color: var(--ols-text);
+  font-size: 12px;
+  font-weight: 530;
+}
+
+.ols-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ols-border-strong);
+  border-top-color: var(--ols-focus);
+  animation: ols-spin 0.65s linear infinite;
+}
+
+@keyframes ols-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .ols-root--panel .ols-split {

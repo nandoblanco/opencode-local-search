@@ -32,6 +32,8 @@ import {
   type SearchSessionMatch,
   searchSessionIndex,
   type SessionIndex,
+  type SearchSort,
+  SEARCH_SORT_LABELS,
 } from "./search.ts";
 
 function splitHighlightedText(
@@ -133,6 +135,8 @@ function createTuiRenderer() {
     const [role, setRole] = createSignal<RoleFilter>("all");
     const [datePreset, setDatePreset] = createSignal<DatePreset>("all");
     const [mode, setMode] = createSignal<SearchMode>("smart");
+    const [sort, setSort] = createSignal<SearchSort>("updated");
+    const [restoring, setRestoring] = createSignal(false);
     const [focusPane, setFocusPane] = createSignal<"search" | "list" | "preview">("search");
     const [selectedIndex, setSelectedIndex] = createSignal(0);
     const [selectedSnippetIndex, setSelectedSnippetIndex] = createSignal(0);
@@ -242,6 +246,7 @@ function createTuiRenderer() {
       const idx = indexData();
       if (!idx.sessions.length) return [];
       return searchSessionIndex(idx, query(), {
+        sort: sort(),
         scope: scope(),
         currentDirectory: props.currentDirectory,
         role: role(),
@@ -257,6 +262,7 @@ function createTuiRenderer() {
       role();
       datePreset();
       mode();
+      sort();
       setSelectedIndex(0);
       setSelectedSnippetIndex(0);
       queueMicrotask(() => listScrollRef?.scrollTo?.(0));
@@ -308,6 +314,25 @@ function createTuiRenderer() {
 
     const cycleMode = () => {
       setMode((prev: SearchMode) => MODE_CYCLE[(MODE_CYCLE.indexOf(prev) + 1) % MODE_CYCLE.length]);
+    };
+
+    const cycleSort = () => {
+      const sorts = Object.keys(SEARCH_SORT_LABELS) as SearchSort[];
+      setSort((prev) => sorts[(sorts.indexOf(prev) + 1) % sorts.length]);
+    };
+
+    const unarchiveSelected = async () => {
+      const session = selectedMatch()?.session;
+      if (!session?.archived || restoring()) return;
+      setRestoring(true);
+      try {
+        await props.context.client.session.update({ sessionID: session.id, archived: false });
+        await reloadIndex(true);
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+      } finally {
+        setRestoring(false);
+      }
     };
 
     const openSelected = (explicitHit?: SearchSessionMatch["matches"][number]) => {
@@ -394,6 +419,18 @@ function createTuiRenderer() {
         event.preventDefault();
         event.stopPropagation();
         toggleScope();
+        return;
+      }
+      if (event.ctrl && name === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        cycleSort();
+        return;
+      }
+      if (event.ctrl && event.shift && name === "a") {
+        event.preventDefault();
+        event.stopPropagation();
+        void unarchiveSelected();
         return;
       }
       if (event.ctrl && name === "g") {
@@ -721,6 +758,23 @@ function createTuiRenderer() {
             active: () => parsedQuery().effectiveMode !== "smart",
             onClick: cycleMode,
           }),
+          Pill({
+            label: () => `sort:${SEARCH_SORT_LABELS[sort()]}`,
+            shortcut: "^s",
+            active: () => sort() !== "updated",
+            onClick: cycleSort,
+          }),
+          createComponent(Show, {
+            get when() { return selectedMatch()?.session.archived; },
+            get children() {
+              return Pill({
+                label: () => restoring() ? "Restoring..." : "Unarchive",
+                shortcut: "^shift+a",
+                active: () => true,
+                onClick: () => void unarchiveSelected(),
+              });
+            },
+          }),
           createComponent(Show, {
             get when() {
               return Boolean(parsedQuery().fileFilter);
@@ -898,7 +952,7 @@ function createTuiRenderer() {
                               isSelected() ? TextAttributes.BOLD : undefined,
                           },
                           () =>
-                            `${isSelected() ? "▸ " : "  "}${item.session.title}`
+                            `${isSelected() ? "▸ " : "  "}${item.session.archived ? "[Archived] " : ""}${item.session.title}`
                         ),
                         el(
                           "text",
@@ -911,7 +965,7 @@ function createTuiRenderer() {
                                 : theme().text.action.primary.base,
                           },
                           () =>
-                            ` [${item.matchBadge}] ${formatRelativeTime(item.session.timeUpdated)}`
+                            ` [${item.matchBadge}] ${formatRelativeTime(item.session.timeUpdated)}${sort() === "context" ? ` · context: ${item.session.contextTokens?.toLocaleString() ?? "not recorded"}` : sort() === "tokens" ? ` · total: ${item.session.totalTokens?.toLocaleString() ?? "not recorded"}` : ""}`
                         )
                       ),
                       el(

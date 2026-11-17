@@ -6,9 +6,9 @@
 
 ## OpenCode Desktop Support
 
-**Replaces OpenCode Desktop's built-in session search.** The titlebar, vertical-tabs, Home session search, and built-in Search sessions dialog route into this plugin's Session Search interface.
+**Replaces OpenCode Desktop's built-in session search.** The titlebar, vertical-tabs (`Search`), Home session search, and built-in Search sessions dialog route into this plugin's `Search` interface.
 
-**Now available in OpenCode Desktop as well as the TUI.** Search local conversation history in a persistent Session Search side panel, preview matching messages and file/tool details, and open matching sessions without a model turn. Press `Ctrl+Shift+F` to open or focus the panel, or `Ctrl+Alt+F` to toggle it. When no session is active, search opens in a fallback dialog.
+**Now available in OpenCode Desktop as well as the TUI.** Search local conversation history in a persistent `Search` side panel, sort sessions by recency, relevance, creation time, title, context size, or total tokens, preview matching messages and file/tool details, and open matching sessions without a model turn. Press `Ctrl+Shift+F` to open or focus the panel, or `Ctrl+Alt+F` to toggle it. When no session is active, search opens in a fallback dialog.
 
 **In the CLI/TUI, search is an additional tool rather than a replacement.** Open it with `/search` or the command palette. The built-in `/sessions` picker remains available.
 
@@ -34,11 +34,12 @@ This project started as a small local CLI script wired to a custom `/search` com
 | Local-first, zero-token execution | Queries your local OpenCode SQLite database directly inside the TUI with zero LLM token usage, zero server tools, and zero cloud dependencies |
 | Zero external npm dependencies | Uses the SQLite driver built into OpenCode's runtime (`bun:sqlite` or `node:sqlite`) and a built-in bounded Levenshtein matcher, requiring no native C++ addons |
 | Dual-schema support (OpenCode V2 + V1) | Automatically detects and indexes both the OpenCode V2 schema (`session_v2` and `session_message`) and the V1 schema (`session`, `message`, and `part`) |
-| Interactive `/search` TUI modal | Wide (`80%` default, configurable via `dialogWidth`) split-pane popup with colored filter pills (`^p` scope, `^g` role, `^t` date, `^r` mode, `^l` refresh), live session list on the left, and highlighted message/tool/file snippet cards on the right |
+| Interactive `/search` TUI modal | Wide (`80%` default, configurable via `dialogWidth`) split-pane popup with colored filter pills (`^p` scope, `^g` role, `^t` date, `^r` mode, `^o` sort, `^l` refresh), live session list on the left, and highlighted message/tool/file snippet cards on the right |
 | Session-level multi-term AND ranking | Searching `auth cookie` finds sessions where both terms appear anywhere across the session title, user prompts, assistant replies, tool calls, or file paths, ranking single-message co-occurrences higher |
+| Multi-mode session sorting | Sort results by `Recently updated`, `Relevance`, `Newest created`, `Oldest created`, `Title A-Z`, `Latest context size`, or `Total tokens used` (`src/sort.ts`) |
 | Typo-tolerant fuzzy & regex search | Supports `"exact phrase"`, `/regex/i` (`re:`), explicit `~fuzzy` terms, and automatic bounded Levenshtein fallback when a multi-word query has a typo |
 | Auto-scroll to matched message | Pressing `Enter` (or clicking any snippet card in the preview pane) opens the session and automatically scrolls the transcript to the exact matched message |
-| OpenCode Desktop search | Persistent Session Search side panel backed by `SearchRpc.query`, with a fallback dialog when no session is active, scope and query filters, snippets, and session navigation |
+| OpenCode Desktop search | Persistent `Search` side panel backed by `SearchRpc.query`, with a fallback dialog when no session is active, centered loading spinner, scope/query/sort controls, snippets, and session navigation |
 
 ## Installation
 
@@ -103,9 +104,9 @@ For development, use Node.js 26.4 or newer to meet the OpenTUI dependency's decl
 
 ### OpenCode Desktop
 
-Run `/search [query]` or press `Ctrl+Shift+F` (`Cmd+Shift+F` on macOS) to open and focus the persistent Session Search side panel. `Ctrl+Alt+F` (`Cmd+Option+F`) toggles it. Without an active session, these commands open a dialog. The plugin also intercepts the built-in titlebar, vertical-tab, and home-session search entry points.
+Run `/search [query]` or press `Ctrl+Shift+F` (`Cmd+Shift+F` on macOS) to open and focus the persistent `Search` side panel. `Ctrl+Alt+F` (`Cmd+Option+F`) toggles it. Without an active session, these commands open a dialog. The plugin also intercepts the built-in titlebar, vertical-tab (`Search`), and home-session search entry points.
 
-Desktop requests use a 35 ms debounce and a sequence counter to discard stale responses. They call `SearchRpc.query` on the server, which returns up to 60 session results with message snippets and file/tool metadata. The TUI continues to query SQLite locally. Exact-message scrolling in the TUI uses the render-tree traversal described below; Desktop uses its own session navigation path.
+Desktop requests use a 16 ms debounce, a centered loading spinner overlay, and a sequence counter to discard stale responses. They call `SearchRpc.query` on the server, which prewarms the SQLite session index on startup and returns up to 60 session results with message snippets, token/context metadata, and file/tool details. The TUI continues to query SQLite locally. Exact-message scrolling in the TUI uses the render-tree traversal described below; Desktop uses its own session navigation path.
 
 ## TUI Query Syntax (`/search`)
 
@@ -137,6 +138,7 @@ Type filters inline in the search bar or toggle them with keyboard shortcuts and
 | `Ctrl+G` | Cycle role filter pill (`all` -> `user` -> `assistant` -> `shell`) |
 | `Ctrl+T` | Cycle date filter pill (`all` -> `today` -> `yesterday` -> `7d` -> `30d`) |
 | `Ctrl+R` | Cycle search mode pill (`smart` -> `fuzzy` -> `regex`) |
+| `Ctrl+O` | Cycle session sort order (`updated` -> `relevance` -> `newest` -> `oldest` -> `title` -> `context` -> `tokens`) |
 | `Ctrl+L` | Force refresh the SQLite session index |
 | `Esc` | Close popup |
 
@@ -154,7 +156,7 @@ Type filters inline in the search bar or toggle them with keyboard shortcuts and
 4. `~/.local/share/opencode/opencode.db` (macOS, Linux, Windows)
 5. `%LOCALAPPDATA%/opencode/opencode.db` (Windows fallback)
 
-Once loaded, `loadSessionIndex()` caches the parsed `SessionIndex` in memory for 6 seconds (`INDEX_TTL_MS = 6000`) so typing in the search bar filters in sub-millisecond time without re-querying SQLite on every keystroke (`Ctrl+L` forces an immediate re-index).
+Once loaded, `loadSessionIndex()` keeps the parsed `SessionIndex` in memory (`INDEX_TTL_MS = 2000`) and performs incremental SQLite delta updates (`WHERE time_updated > cachedMaxUpdated`) so only newly modified sessions are re-read from `session_v2` and `session_message`. Typing in the search bar filters in sub-millisecond time (`Ctrl+L` or Desktop `Refresh` forces a full re-index).
 
 ### 2. Dual-Schema Indexing (OpenCode V2 + V1 Fallback)
 

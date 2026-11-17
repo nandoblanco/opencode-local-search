@@ -31,6 +31,7 @@ export async function executeSearchQuery(
     datePreset,
   })
   const matches = searchSessionIndex(index, query, {
+    sort: input.sort,
     scope,
     currentDirectory,
     role,
@@ -46,6 +47,9 @@ export async function executeSearchQuery(
     directoryNorm: m.session.directoryNorm,
     timeCreated: m.session.timeCreated,
     timeUpdated: m.session.timeUpdated,
+    archived: m.session.archived,
+    contextTokens: m.session.contextTokens,
+    totalTokens: m.session.totalTokens,
     tools: m.session.tools.slice(0, 12),
     files: m.session.files.slice(0, 16),
     entryCount: m.session.entries.length,
@@ -102,6 +106,9 @@ const server: Plugin.Definition = {
         },
       })
     }
+    setTimeout(() => {
+      void loadSessionIndex(false).catch(() => {})
+    }, 50).unref?.()
   },
 }
 

@@ -192,6 +192,20 @@ describe("searchSessionIndex", () => {
     const filteredHits = searchSessionIndex(mockIndex, "in:file playwright databse");
     assert.equal(filteredHits.length, 0);
   });
+  it("sorts sessions before limiting results and keeps unknown usage last", () => {
+    const sessions = mockIndex.sessions.map((session, i) => ({
+      ...session, title: i === 0 ? "Zebra" : "Alpha", archived: i === 1,
+      timeCreated: i === 0 ? 20 : 10, timeUpdated: i === 0 ? 10 : 20,
+      contextTokens: i === 0 ? 100 : undefined, totalTokens: i === 0 ? 400 : undefined,
+    }));
+    const index = { ...mockIndex, sessions };
+    for (const [sort, first] of [["updated", 1], ["newest", 0], ["oldest", 1], ["title", 1], ["context", 0], ["tokens", 0]] as const) {
+      const matches = searchSessionIndex(index, "", { sort, limit: 1 });
+      assert.equal(matches[0].session.id, sessions[first].id, sort);
+    }
+    assert.equal(searchSessionIndex(index, "")[0].session.archived, true);
+    assert.equal(searchSessionIndex(mockIndex, "playwright", { sort: "relevance" })[0].session.id, "ses_1");
+  });
 });
 
 describe("loadSessionIndex (SQLite V2 schema)", () => {
@@ -222,6 +236,12 @@ describe("loadSessionIndex (SQLite V2 schema)", () => {
       db.prepare(
         "INSERT INTO session_v2 (id, title, workspace_directory, root_directory, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)"
       ).run("ses_test", "SQLite Loader Test", "/tmp/proj", "/tmp/proj", now, now);
+      db.prepare("UPDATE session_v2 SET time_archived = ? WHERE id = ?").run(now, "ses_test");
+      const insert = db.prepare("INSERT INTO session_message (id, session_id, type, time_created, data) VALUES (?, ?, ?, ?, ?)");
+      for (let i = 0; i < 260; i++) {
+        insert.run(`usage_${i}`, "ses_test", "assistant", now - 1000 + i,
+          JSON.stringify({ type: "assistant", tokens: { input: 100 + i, output: 10, reasoning: 2, cache: { read: 20, write: 5 } } }));
+      }
 
       db.prepare(
         "INSERT INTO session_message (id, session_id, type, time_created, data) VALUES (?, ?, ?, ?, ?)"
@@ -237,6 +257,9 @@ describe("loadSessionIndex (SQLite V2 schema)", () => {
       const index = await loadSessionIndex(true, dbPath);
       assert.equal(index.sessions.length, 1);
       assert.equal(index.sessions[0].title, "SQLite Loader Test");
+      assert.equal(index.sessions[0].archived, true);
+      assert.equal(index.sessions[0].contextTokens, 384);
+      assert.equal(index.sessions[0].totalTokens, 69290);
 
       const matches = searchSessionIndex(index, "zero token");
       assert.equal(matches.length, 1);
@@ -257,6 +280,8 @@ describe("loadSessionIndex (SQLite V2 schema)", () => {
       assert.equal(rpcOutput.results[0].id, "ses_test");
       assert.equal(rpcOutput.results[0].bestMessageId, "msg_1");
       assert.equal(rpcOutput.results[0].recentEntries.length, 1);
+      assert.equal(rpcOutput.results[0].archived, true);
+      assert.equal(rpcOutput.results[0].totalTokens, 69290);
 
       let registeredDef: unknown = null;
       await server.setup({

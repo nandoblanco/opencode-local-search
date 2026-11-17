@@ -5,6 +5,7 @@ import type {
   ScopeFilter,
   SearchEntryMatch,
   SearchMode,
+  SearchSort,
 } from "./search.ts"
 
 export interface RpcPreviewEntry {
@@ -25,6 +26,9 @@ export interface RpcSessionMatch {
   directoryNorm: string
   timeCreated: number
   timeUpdated: number
+  archived?: boolean
+  contextTokens?: number
+  totalTokens?: number
   tools: string[]
   files: string[]
   entryCount: number
@@ -55,6 +59,7 @@ export interface RpcParsedQueryInfo {
 }
 
 export interface SearchQueryInput {
+  sort?: SearchSort
   query: string
   scope?: ScopeFilter
   currentDirectory?: string
@@ -77,6 +82,7 @@ const searchInputSchema = {
   type: "object",
   properties: {
     query: { type: "string" },
+    sort: { type: "string", enum: ["updated", "relevance", "newest", "oldest", "title", "context", "tokens"] },
     scope: { type: "string", enum: ["all", "project"] },
     currentDirectory: { type: "string" },
     role: { type: "string", enum: ["all", "user", "assistant", "shell"] },
