@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-11-17)
 
 - Renamed OpenCode Desktop sidebar label (`vertical-tabs-search`), panel tab title, and dialog title from `Search sessions` to `Search` and stripped any trailing shortcut badge from the left sidebar button (`src/gui.tsx`).
 - Added a centered loading spinner overlay (`.ols-loading-center` / `.ols-loading-pill`) inside the search results split view (`src/gui.tsx`, `src/gui.css`) and reduced search input debounce to 16ms.
