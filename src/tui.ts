@@ -135,7 +135,8 @@ function createTuiRenderer() {
     const [role, setRole] = createSignal<RoleFilter>("all");
     const [datePreset, setDatePreset] = createSignal<DatePreset>("all");
     const [mode, setMode] = createSignal<SearchMode>("smart");
-    const [sort, setSort] = createSignal<SearchSort>("updated");
+    const [sortChoice, setSortChoice] = createSignal<SearchSort | null>(null);
+    const sort = () => sortChoice() ?? (query().trim() ? "relevance" : "updated");
     const [restoring, setRestoring] = createSignal(false);
     const [focusPane, setFocusPane] = createSignal<"search" | "list" | "preview">("search");
     const [selectedIndex, setSelectedIndex] = createSignal(0);
@@ -318,7 +319,8 @@ function createTuiRenderer() {
 
     const cycleSort = () => {
       const sorts = Object.keys(SEARCH_SORT_LABELS) as SearchSort[];
-      setSort((prev) => sorts[(sorts.indexOf(prev) + 1) % sorts.length]);
+      const prev = sort();
+      setSortChoice(sorts[(sorts.indexOf(prev) + 1) % sorts.length]);
     };
 
     const unarchiveSelected = async () => {
@@ -600,10 +602,11 @@ function createTuiRenderer() {
           paddingBottom: 0,
           flexShrink: 0,
           width: "100%",
+          gap: 2,
         },
         el(
           "box",
-          { flexDirection: "row", gap: 2, alignItems: "center", flexShrink: 0 },
+          { flexDirection: "row", gap: 2, alignItems: "center", flexShrink: 1, minWidth: 0 },
           el(
             "text",
             {
@@ -618,7 +621,8 @@ function createTuiRenderer() {
             "text",
             {
               wrapMode: "none",
-              flexShrink: 0,
+              flexShrink: 1,
+              truncate: true,
               fg: () => theme().text.muted,
             },
             () => props.context.ui.format.path(props.currentDirectory)
@@ -720,7 +724,7 @@ function createTuiRenderer() {
             () =>
               loading()
                 ? "indexing SQLite..."
-                : `${results().length} of ${indexData().sessions.length} sessions · 0 tokens`
+                : `${results().length} of ${indexData().sessions.length} sessions`
           )
         ),
         // Filter pills bar
@@ -729,7 +733,8 @@ function createTuiRenderer() {
           {
             flexDirection: "row",
             flexWrap: "wrap",
-            gap: 1,
+            columnGap: 1,
+            rowGap: 0,
             alignItems: "center",
           },
           Pill({
@@ -854,18 +859,21 @@ function createTuiRenderer() {
               borderColor: () => theme().border.base,
               paddingX: 1,
               flexShrink: 0,
+              gap: 2,
             },
             el(
               "text",
               {
+                wrapMode: "none",
+                flexShrink: 0,
                 fg: () => theme().text.action.primary.base,
                 attributes: TextAttributes.BOLD,
               },
-              "◈ MATCHING SESSIONS"
+              "◈ SESSIONS"
             ),
             el(
               "text",
-              { fg: () => theme().text.muted },
+              { wrapMode: "none", flexShrink: 1, minWidth: 0, truncate: true, fg: () => theme().text.muted },
               () =>
                 `${(parsedQuery().scope ?? scope()) === "project" ? "project" : "all"} · ${parsedQuery().effectiveMode}`
             )
@@ -965,7 +973,7 @@ function createTuiRenderer() {
                                 : theme().text.action.primary.base,
                           },
                           () =>
-                            ` [${item.matchBadge}] ${formatRelativeTime(item.session.timeUpdated)}${sort() === "context" ? ` · context: ${item.session.contextTokens?.toLocaleString() ?? "not recorded"}` : sort() === "tokens" ? ` · total: ${item.session.totalTokens?.toLocaleString() ?? "not recorded"}` : ""}`
+                            ` ${formatRelativeTime(item.session.timeUpdated)}${sort() === "context" ? ` · context: ${item.session.contextTokens?.toLocaleString() ?? "not recorded"}` : sort() === "tokens" ? ` · total: ${item.session.totalTokens?.toLocaleString() ?? "not recorded"}` : ""}`
                         )
                       ),
                       el(
@@ -978,7 +986,7 @@ function createTuiRenderer() {
                               ? theme().text.action.primary.focused
                               : theme().text.muted,
                         },
-                        () => `  ${item.bestSnippet}`
+                        () => `  [${item.matchBadge}] ${item.bestSnippet}`
                       )
                     );
                   },
@@ -1019,18 +1027,21 @@ function createTuiRenderer() {
               borderColor: () => theme().border.base,
               marginBottom: 1,
               flexShrink: 0,
+              gap: 2,
             },
             el(
               "text",
               {
+                wrapMode: "none",
+                flexShrink: 0,
                 fg: () => theme().text.action.primary.base,
                 attributes: TextAttributes.BOLD,
               },
-              "◈ CONVERSATION & MATCH PREVIEW"
+              "◈ MATCH PREVIEW"
             ),
             el(
               "text",
-              { fg: () => theme().text.muted },
+              { wrapMode: "none", flexShrink: 1, minWidth: 0, truncate: true, fg: () => theme().text.muted },
               () =>
                 selectedMatch()
                   ? `${selectedMatch()?.totalMatches ?? 0} match${selectedMatch()?.totalMatches === 1 ? "" : "es"} · updated ${formatRelativeTime(selectedMatch()?.session.timeUpdated ?? 0)}`

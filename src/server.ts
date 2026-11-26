@@ -106,9 +106,6 @@ const server: Plugin.Definition = {
         },
       })
     }
-    setTimeout(() => {
-      void loadSessionIndex(false).catch(() => {})
-    }, 50).unref?.()
   },
 }
 

@@ -58,7 +58,7 @@
 
 .ols-root--modal {
   flex: 1;
-  height: min(64vh, 480px);
+  height: min(74vh, 660px);
   max-height: 100%;
   overflow: hidden;
   border-top: 1px solid var(--ols-border);
@@ -68,6 +68,7 @@
 .ols-root--panel {
   height: 100%;
   min-height: 360px;
+  container-type: inline-size;
 }
 
 /* Header: Search input + filter controls */
@@ -265,8 +266,66 @@
 }
 
 .ols-root--panel .ols-split {
-  grid-template-columns: 1fr;
-  grid-template-rows: minmax(170px, 44%) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.ols-root--panel .ols-column--detail,
+.ols-root--panel.is-detail .ols-column--list {
+  display: none;
+}
+
+.ols-root--panel.is-detail .ols-column--detail {
+  display: flex;
+}
+
+.ols-back {
+  display: none;
+}
+
+.ols-root--panel .ols-back {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--ols-bg-pill);
+  color: var(--ols-text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ols-root--panel .ols-back:hover {
+  background: var(--ols-bg-pressed);
+}
+
+.ols-root--panel .ols-back:focus-visible {
+  outline: 2px solid var(--ols-focus);
+  outline-offset: 1px;
+}
+
+@container (min-width: 640px) {
+  .ols-root--panel .ols-split {
+    grid-template-columns: minmax(14rem, 38%) minmax(0, 1fr);
+  }
+
+  .ols-root--panel .ols-column--list,
+  .ols-root--panel.is-detail .ols-column--list,
+  .ols-root--panel .ols-column--detail {
+    display: flex;
+  }
+
+  .ols-root.ols-root--panel .ols-column--list {
+    border-bottom: 0;
+    border-right: 1px solid var(--ols-border);
+  }
+
+  .ols-root--panel .ols-back {
+    display: none;
+  }
 }
 
 .ols-column {
@@ -445,6 +504,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ols-root--panel .ols-detail-meta {
+  flex-wrap: wrap;
+  column-gap: 6px;
+  row-gap: 0;
+}
+
+.ols-root--panel .ols-detail-meta > span {
+  white-space: nowrap;
 }
 
 .ols-detail-actions {

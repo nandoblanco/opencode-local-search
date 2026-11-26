@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1 (2026-11-26)
+
+- Removed eager startup SQLite index prewarming from `src/server.ts` so OpenCode server startup is not blocked by synchronous database scans on large `opencode.db` files; the index still loads and caches on demand when `/search` is queried.
+- Sort now switches to `Relevance` automatically while a query is typed and back to `Recently updated` when cleared, unless a sort was picked manually (`src/gui.tsx`, `src/tui.ts`).
+- Desktop hides the current session from results by default, with a `Hide this session` / `This session hidden` toggle pill.
+- Desktop panel now uses a container query: results and matches sit side by side at 640px and wider, and below that the list fills the panel and a row opens the matches with a `Back` button (Escape returns to the list); detail meta wraps instead of clipping (`src/gui.css`).
+- TUI `/search` rows keep the title readable by showing only the age on the title line and moving the match badge to the snippet line; the count line no longer shows the `0 tokens` label.
+- TUI `/search` pane headers are shorter (`SESSIONS`, `MATCH PREVIEW`) and stay on one line with truncating meta, the header path truncates instead of colliding with the key hints at narrow widths, and wrapped filter pills no longer leave a blank row.
+- `package-lock.json` root version synced to the package version.
+- Desktop dialog (`Ctrl+Shift+F` with no session) now fills its height instead of leaving an empty band at the bottom (`src/gui.css`).
+- Desktop arrow-key navigation scrolls the selected session and match into view (`src/gui.tsx`).
+
 ## 1.2.0 (2026-11-17)
 
 - Renamed OpenCode Desktop sidebar label (`vertical-tabs-search`), panel tab title, and dialog title from `Search sessions` to `Search` and stripped any trailing shortcut badge from the left sidebar button (`src/gui.tsx`).

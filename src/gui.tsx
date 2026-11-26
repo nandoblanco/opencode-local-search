@@ -233,7 +233,12 @@ function SearchSurface(props: {
   const [role, setRole] = createSignal<RoleFilter>("all")
   const [datePreset, setDatePreset] = createSignal<DatePreset>("all")
   const [mode, setMode] = createSignal<SearchMode>("smart")
-  const [sort, setSort] = createSignal<SearchSort>("updated")
+  const [sortChoice, setSortChoice] = createSignal<SearchSort | null>(null)
+  const sort = () => sortChoice() ?? (query().trim() ? "relevance" : "updated")
+  const setSort = (value: SearchSort) => setSortChoice(value)
+  const [includeCurrent, setIncludeCurrent] = createSignal(false)
+  const [hiddenCurrent, setHiddenCurrent] = createSignal(false)
+  const [view, setView] = createSignal<"list" | "detail">("list")
   const [restoring, setRestoring] = createSignal(false)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [selectedMatchIdx, setSelectedMatchIdx] = createSignal(0)
@@ -287,8 +292,13 @@ function SearchSurface(props: {
         forceReload,
       })
       if (seq !== reqSeq) return
+      const currentId = props.ctx.sessions.current()?.id
+      const visible = includeCurrent()
+        ? response.results
+        : response.results.filter((r) => r.id !== currentId)
+      setHiddenCurrent(visible.length !== response.results.length)
       setTotalSessions(response.totalSessions)
-      setResults(response.results)
+      setResults(visible)
       setParsedInfo(response.parsed)
       setSelectedIndex((prev) =>
         Math.max(0, Math.min(prev, Math.max(0, response.results.length - 1))),
@@ -320,6 +330,7 @@ function SearchSurface(props: {
     void datePreset()
     void mode()
     void sort()
+    void includeCurrent()
     void currentDirectory()
 
     if (debounceTimer) clearTimeout(debounceTimer)
@@ -470,6 +481,13 @@ function SearchSurface(props: {
     setQuery(cur ? `${cur} ${token}` : token)
   }
 
+  function revealSelected(root: HTMLElement) {
+    requestAnimationFrame(() => {
+      root.querySelector(".ols-row--selected")?.scrollIntoView({ block: "nearest" })
+      root.querySelector(".ols-turn--selected")?.scrollIntoView({ block: "nearest" })
+    })
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.altKey) && !e.shiftKey) {
       const key = e.key.toLowerCase()
@@ -500,6 +518,12 @@ function SearchSurface(props: {
       }
     }
 
+    if (e.key === "Escape" && view() === "detail") {
+      e.preventDefault()
+      setView("list")
+      return
+    }
+
     if (e.key === "Tab") {
       e.preventDefault()
       setActivePane((prev) => (prev === "sessions" ? "matches" : "sessions"))
@@ -517,6 +541,7 @@ function SearchSurface(props: {
         setSelectedIndex((i) => Math.min(total - 1, i + 1))
         setSelectedMatchIdx(0)
       }
+      revealSelected(e.currentTarget as HTMLElement)
       return
     }
 
@@ -528,6 +553,7 @@ function SearchSurface(props: {
         setSelectedIndex((i) => Math.max(0, i - 1))
         setSelectedMatchIdx(0)
       }
+      revealSelected(e.currentTarget as HTMLElement)
       return
     }
 
@@ -557,7 +583,7 @@ function SearchSurface(props: {
 
   return (
     <div
-      class={`ols-root ols-root--${props.variant}`}
+      class={`ols-root ols-root--${props.variant}${view() === "detail" ? " is-detail" : ""}`}
       data-scheme={colorScheme()}
       onKeyDown={handleKeyDown}
     >
@@ -676,6 +702,20 @@ function SearchSurface(props: {
               </button>
             </Show>
 
+            <Show when={hiddenCurrent() || includeCurrent()}>
+              <button
+                type="button"
+                class="ols-active-pill"
+                onClick={() => setIncludeCurrent((v) => !v)}
+                title="The session you are in usually matches its own query"
+              >
+                <span>{includeCurrent() ? "Hide this session" : "This session hidden"}</span>
+                <Show when={!includeCurrent()}>
+                  <ui.Icon name="close-small" size="small" />
+                </Show>
+              </button>
+            </Show>
+
             <Show when={parsedInfo()?.regexError}>
               {(err) => <span class="ols-error-pill">{err()}</span>}
             </Show>
@@ -767,6 +807,7 @@ function SearchSurface(props: {
                           setSelectedIndex(idx())
                           setSelectedMatchIdx(0)
                           setActivePane("sessions")
+                          setView("detail")
                         }}
                         onDblClick={() => openSession(item)}
                       >
@@ -839,6 +880,16 @@ function SearchSurface(props: {
               {(session) => (
                 <>
                   <div class="ols-detail-header">
+                    <button
+                      type="button"
+                      class="ols-back"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setView("list")
+                      }}
+                    >
+                      ← Back
+                    </button>
                     <div class="ols-detail-heading">
                       <div class="ols-detail-title">{session().title}</div>
                       <div class="ols-detail-meta">

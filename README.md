@@ -8,7 +8,7 @@
 
 **Replaces OpenCode Desktop's built-in session search.** The titlebar, vertical-tabs (`Search`), Home session search, and built-in Search sessions dialog route into this plugin's `Search` interface.
 
-**Now available in OpenCode Desktop as well as the TUI.** Search local conversation history in a persistent `Search` side panel, sort sessions by recency, relevance, creation time, title, context size, or total tokens, preview matching messages and file/tool details, and open matching sessions without a model turn. Press `Ctrl+Shift+F` to open or focus the panel, or `Ctrl+Alt+F` to toggle it. When no session is active, search opens in a fallback dialog.
+**Now available in OpenCode Desktop as well as the TUI.** Search local conversation history in a persistent `Search` side panel (side-by-side at 640px and wider, or list-to-matches with a `Back` button in narrow panels), sort sessions by recency, relevance (auto-selected while typing unless manually overridden), creation time, title, context size, or total tokens, hide the current session with `Hide this session`, preview matching messages and file/tool details, and open matching sessions without a model turn. Press `Ctrl+Shift+F` to open or focus the panel, or `Ctrl+Alt+F` to toggle it. When no session is active, search opens in a fallback dialog.
 
 **In the CLI/TUI, search is an additional tool rather than a replacement.** Open it with `/search` or the command palette. The built-in `/sessions` picker remains available.
 
@@ -106,7 +106,7 @@ For development, use Node.js 26.4 or newer to meet the OpenTUI dependency's decl
 
 Run `/search [query]` or press `Ctrl+Shift+F` (`Cmd+Shift+F` on macOS) to open and focus the persistent `Search` side panel. `Ctrl+Alt+F` (`Cmd+Option+F`) toggles it. Without an active session, these commands open a dialog. The plugin also intercepts the built-in titlebar, vertical-tab (`Search`), and home-session search entry points.
 
-Desktop requests use a 16 ms debounce, a centered loading spinner overlay, and a sequence counter to discard stale responses. They call `SearchRpc.query` on the server, which prewarms the SQLite session index on startup and returns up to 60 session results with message snippets, token/context metadata, and file/tool details. The TUI continues to query SQLite locally. Exact-message scrolling in the TUI uses the render-tree traversal described below; Desktop uses its own session navigation path.
+Desktop requests use a 16 ms debounce, a centered loading spinner overlay, and a sequence counter to discard stale responses. They call `SearchRpc.query` on the server, which loads and caches the SQLite session index on demand and returns up to 60 session results with message snippets, token/context metadata, and file/tool details. The TUI continues to query SQLite locally. Exact-message scrolling in the TUI uses the render-tree traversal described below; Desktop uses its own session navigation path.
 
 ## TUI Query Syntax (`/search`)
 
