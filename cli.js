@@ -218,8 +218,8 @@ export async function installPlugin(options) {
   const pkgName = "@nandoblanco/opencode-local-search";
   const matchKey = "opencode-local-search";
   const entryStr = opts.dialogWidth
-    ? '["' + pkgName + '", { "dialogWidth": "' + String(opts.dialogWidth) + '" }]'
-    : '"' + pkgName + '"';
+    ? JSON.stringify({ package: pkgName, options: { dialogWidth: String(opts.dialogWidth) } })
+    : JSON.stringify(pkgName);
 
   const jsoncCandidate = path.join(configDir, cliName + ".jsonc");
   const jsonCandidate = path.join(configDir, cliName + ".json");
@@ -232,14 +232,6 @@ export async function installPlugin(options) {
   const serverStatus = addPluginToJsoncFile(
     serverConfigFile,
     "https://" + cliName + ".ai/config.json",
-    '"' + pkgName + '"',
-    matchKey
-  );
-
-  const cliConfigFile = path.join(configDir, "cli.json");
-  const cliStatus = addPluginToJsoncFile(
-    cliConfigFile,
-    "https://" + cliName + ".ai/v2/cli.json",
     entryStr,
     matchKey
   );
@@ -248,8 +240,6 @@ export async function installPlugin(options) {
     configDir,
     serverConfigFile,
     serverStatus,
-    cliConfigFile,
-    cliStatus,
   };
 }
 
@@ -273,8 +263,7 @@ if (isDirectRun) {
     installPlugin({ configDir, dialogWidth })
       .then((res) => {
         console.log("opencode-local-search installed:");
-        console.log("  Server/Desktop config: " + res.serverConfigFile + " (" + res.serverStatus + ")");
-        console.log("  TUI config:            " + res.cliConfigFile + " (" + res.cliStatus + ")");
+        console.log("  Config file: " + res.serverConfigFile + " (" + res.serverStatus + ")");
       })
       .catch((err) => {
         console.error("Install failed:", err);

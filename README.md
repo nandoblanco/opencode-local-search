@@ -43,25 +43,21 @@ This project started as a small local CLI script wired to a custom `/search` com
 
 ## Installation
 
-### Option 1: One-Command Install (Recommended)
+### Option 1: OpenCode Plugin CLI (Recommended)
 
-```sh
-npx @nandoblanco/opencode-local-search install
-# or directly from GitHub:
-npx github:nandoblanco/opencode-local-search install
-```
-
-Or install with OpenCode's native plugin CLI:
+Install with OpenCode's native plugin CLI. OpenCode downloads the package from npm (or GitHub) into its own cache automatically and adds one entry to `~/.config/opencode/opencode.jsonc` that loads the server RPC bridge, `/search` TUI popup, and Desktop panel together:
 
 ```sh
 opencode plugin add @nandoblanco/opencode-local-search
-# or directly from GitHub:
+# Auto-update on startup and every 24 hours:
+opencode plugin add @nandoblanco/opencode-local-search@latest
+# Or install directly from GitHub:
 opencode plugin add github:nandoblanco/opencode-local-search
 ```
 
 ### Option 2: Manual Configuration
 
-Add `@nandoblanco/opencode-local-search` to the global `~/.config/opencode/opencode.jsonc` (or `$XDG_CONFIG_HOME/opencode/opencode.jsonc`) to load the server RPC bridge, TUI, and Desktop parts together:
+Add `@nandoblanco/opencode-local-search` to `"plugins"` in the global `~/.config/opencode/opencode.jsonc` (or project `./opencode.jsonc` / `./.opencode/opencode.jsonc`). OpenCode fetches the npm package automatically and loads the server RPC bridge, TUI, and Desktop parts from this single entry (no manual `npm install` or separate `cli.json` entry is required):
 
 ```json
 {
@@ -76,9 +72,19 @@ Add `@nandoblanco/opencode-local-search` to the global `~/.config/opencode/openc
 }
 ```
 
-### From a Local Directory
+### Option 3: Built-in CLI Helper (`npx`)
 
-For development, use Node.js 26.4 or newer to meet the OpenTUI dependency's declared minimum. Clone this repository, run `npm ci` and `npm run build` to build the Desktop bundle, then reference the directory in the global `opencode.jsonc`. TUI-only use does not need the GUI build. The root `overrides` pin patched `glob` and `minimatch` versions for this repository's development dependencies; they do not alter the OpenCode host application's dependencies:
+Run the package CLI once via `npx` to register the plugin in `~/.config/opencode/opencode.jsonc`:
+
+```sh
+npx @nandoblanco/opencode-local-search install
+# Or directly from GitHub:
+npx github:nandoblanco/opencode-local-search install
+```
+
+### Option 4: From a Local Directory
+
+For development, use Node.js 26.4 or newer to meet the OpenTUI dependency's declared minimum. Clone this repository, run `npm ci` and `npm run build` to build the Desktop bundle, then reference the directory in `opencode.jsonc` (or place the directory inside `~/.config/opencode/plugins/` or `.opencode/plugins/`). TUI-only use does not need the GUI build. The root `overrides` pin patched `glob` and `minimatch` versions for this repository's development dependencies; they do not alter the OpenCode host application's dependencies:
 
 ```json
 {
@@ -239,17 +245,17 @@ Every operation in `opencode-local-search` uses zero LLM tokens:
 
 ## Configuration Options
 
-Configure the package in the global `opencode.jsonc` for all interfaces. `dialogWidth` controls the TUI popup only; Desktop uses its panel or dialog layout. TUI-specific options can also be passed in `cli.json`:
+Configure the package in the global `~/.config/opencode/opencode.jsonc` for all interfaces. `dialogWidth` controls the TUI popup only; Desktop uses its panel or dialog layout:
 
 ```json
 {
 	"plugins": [
-		[
-			"@nandoblanco/opencode-local-search",
-			{
+		{
+			"package": "@nandoblanco/opencode-local-search",
+			"options": {
 				"dialogWidth": "80%"
 			}
-		]
+		}
 	]
 }
 ```

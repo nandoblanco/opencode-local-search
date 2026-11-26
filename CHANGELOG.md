@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2 (2026-11-26)
+
+- Updated `installPlugin` (`cli.js`) to write only to `opencode.jsonc` using OpenCode V2 object syntax (`{ "package", "options" }`) instead of duplicating entries into `cli.json` or emitting V1 tuple syntax, and standardized `README.md` to lead with `opencode plugin add`.
+
 ## 1.2.1 (2026-11-26)
 
 - Removed eager startup SQLite index prewarming from `src/server.ts` so OpenCode server startup is not blocked by synchronous database scans on large `opencode.db` files; the index still loads and caches on demand when `/search` is queried.
