@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3 (2026-11-26)
+
+- Refreshed `assets/screenshot.png` (OpenCode Desktop split-pane `Search` panel) and added `assets/screenshot-tui.png` (OpenTUI `/search` modal), embedding both side by side with full-size links and a Playwright capture note in `README.md`, and adding `assets/screenshot-tui.png` to `package.json` `"files"`.
+
 ## 1.2.2 (2026-11-26)
 
 - Updated `installPlugin` (`cli.js`) to write only to `opencode.jsonc` using OpenCode V2 object syntax (`{ "package", "options" }`) instead of duplicating entries into `cli.json` or emitting V1 tuple syntax, and standardized `README.md` to lead with `opencode plugin add`.

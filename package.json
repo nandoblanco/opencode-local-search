@@ -1,6 +1,6 @@
 {
   "name": "@nandoblanco/opencode-local-search",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "publishConfig": {
     "access": "public"
   },
@@ -24,6 +24,7 @@
     "src/*.css",
     "dist/*.cjs",
     "assets/screenshot.png",
+    "assets/screenshot-tui.png",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

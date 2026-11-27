@@ -2,7 +2,12 @@
 
 **Local-first, zero-token interactive session search plugin for OpenCode**: indexes local SQLite session history, previews matching messages, tools, and files as you type, and opens matching conversations from the TUI or OpenCode Desktop.
 
-![opencode-local-search TUI preview](./assets/screenshot.png)
+| OpenCode Desktop | OpenCode TUI |
+| :---: | :---: |
+| [![opencode-local-search Desktop preview](./assets/screenshot.png)](./assets/screenshot.png) | [![opencode-local-search TUI preview](./assets/screenshot-tui.png)](./assets/screenshot-tui.png) |
+| [View full size](./assets/screenshot.png) | [View full size](./assets/screenshot-tui.png) |
+
+*Note: Previews were rendered in headless Chromium via Playwright from the plugin's actual Desktop (`dist/gui-experimental.cjs`) and TUI (`src/tui.ts`) UI code using synthetic fixture data and a simulated host frame, rather than captured from a live OpenCode window or terminal.*
 
 ## OpenCode Desktop Support
 
